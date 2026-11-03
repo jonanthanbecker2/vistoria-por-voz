@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.2.4';
+  var VERSAO_APP = '0.3.0';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   var CFG = { centralConectada: false };
   var app = document.getElementById('app');
@@ -377,7 +377,13 @@
   }
   function rolar() { requestAnimationFrame(function () { UI.log.scrollTop = UI.log.scrollHeight; }); }
   function balao(cls, txt) { var b = el('div', { class: 'balao ' + cls }, txt); UI.log.appendChild(b); rolar(); return b; }
-  function appDiz(txt, chaves, fila) { balao('app', txt); if (chaves) Fala.dizer(chaves, fila); else Fala.falar(txt); }
+  // Com chaves do roteiro, o balão mostra exatamente o texto falado (a tela nunca difere da voz)
+  function textoDasChaves(chaves) { var F = window.FALAS || {}; return (chaves || []).map(function (k) { return F[k] || ''; }).join(' ').trim(); }
+  function appDiz(txt, chaves, fila) {
+    var t = chaves && textoDasChaves(chaves);
+    balao('app', t || txt);
+    if (chaves && t) Fala.dizer(chaves, fila); else Fala.falar(txt);
+  }
   function motDiz(txt) { balao('mot', txt); }
   function sistema(txt) { balao('sis', txt); }
   function cartao(cls, rot, val, extra) {
@@ -408,8 +414,7 @@
     manterTelaLigada(true);
     montarConversa();
     var g = saudacao() + ', ' + primeiroNome(V.reg.motorista) + '. Vamos iniciar a vistoria do veículo.';
-    balao('app', g); balao('app', 'Qual é o número da frota?');
-    Fala.dizer([chaveSaudacao(), 'pede_frota']);
+    appDiz(g, [chaveSaudacao()]); appDiz('Qual é o número da frota?', ['pede_frota'], true);
     pedirFrota(false);
   }
 
@@ -489,8 +494,8 @@
     salvarAndamento();
     ultimoRender = function () {
       setPrompt('Vá até o veículo. Toque para começar o checklist.');
-      acoes(btn('Iniciar checklist (' + C.itens.length + ' itens)', 'pri grande', function () {
-        sistema('— Checklist · ' + C.itens.length + ' itens —'); perguntarItem(0, true);
+      acoes(btn('Iniciar checklist', 'pri grande', function () {
+        perguntarItem(0, true);
       }), comCorrigir ? btn('Corrigir frota', 'sec', function () { V.reg.veiculo = null; V.reg.frota = null; pedirFrota(true); }) : null);
     };
     ultimoRender();
@@ -501,11 +506,12 @@
     var it = C.itens[i];
     if (!it) { finalizar('normal'); return; }
     V.idx = i;
-    UI.sub.textContent = 'Item ' + it.ordem + ' de ' + C.itens.length + ' · ' + it.rotulo;
+    UI.sub.textContent = it.rotulo;
     UI.prog.style.width = Math.round(i / C.itens.length * 100) + '%';
     // t_anuncio: momento em que o item foi anunciado. A janela de inspeção vai daqui até a prontidão.
     V.t = { t_anuncio: isoLocal(), m_anuncio: mono(), t_prontidao: null, m_prontidao: null, tentativas_voz: 0 };
-    cartao('item', 'Item ' + it.ordem + ' de ' + C.itens.length, it.pergunta);
+    if (comAbertura) balao('app', textoDasChaves(['inicio_checklist']));
+    cartao('item', it.rotulo, it.pergunta);
     Fala.dizer(comAbertura ? ['inicio_checklist', 'item_' + it.id] : ['item_' + it.id]);
     renderOpcoes(it);
   }
@@ -520,7 +526,7 @@
         V.t.tentativas_voz++;
         var o = casarOpcao(it, txt, alts);
         if (o) escolher(it, o, 'voz', txt);
-        else { setPrompt('Ouvi "' + txt + '", mas não identifiquei a resposta. Fale de novo ou toque na opção.'); Fala.dizer(['nao_entendi']); }
+        else { setPrompt(textoDasChaves(['nao_entendi'])); Fala.dizer(['nao_entendi']); }
       }, { antes: marcarProntidao });
       var extra = linha(btn('↺ Repetir', 'sec peq', function () { Fala.dizer(['item_' + it.id]); }),
         V.idx > 0 ? btn('← Item anterior', 'sec peq', voltarItem) : null);
@@ -570,7 +576,7 @@
     if (!V.reg.respostas.length) return;
     var ult = V.reg.respostas.pop();
     V.reg.pendencias = V.reg.pendencias.filter(function (p) { return p.item_id !== ult.item_id; });
-    sistema('Voltando ao item ' + ult.ordem + '.');
+    sistema('Voltando ao item anterior.');
     salvarAndamento();
     perguntarItem(ult.ordem - 1);
   }
@@ -642,7 +648,7 @@
     appDiz('Atenção aos pontos a seguir.', ['resultado_atencao'], true);
     ordem.forEach(function (ac) {
       var lista = grupos[ac], a = ACOES[ac];
-      cartao(a.prioridade <= 2 ? 'grave' : 'leve', a.texto, null, el('ul', { class: 'c-lista' }, lista.map(function (p) { return el('li', null, p.rotulo); })));
+      cartao(a.prioridade <= 2 ? 'grave' : 'leve', textoDasChaves(['acao_' + ac]) || a.texto, null, el('ul', { class: 'c-lista' }, lista.map(function (p) { return el('li', null, p.rotulo); })));
       Fala.dizer(['acao_' + ac, 'itens'].concat(lista.map(function (p) { return 'rot_' + p.item_id; })), true);
     });
     despedir();
@@ -670,7 +676,6 @@
     var n = V.reg.respostas.length, ult = V.reg.respostas[n - 1];
     if (ult && ult.acao === 'REGISTRAR_RELATO') { pedirRelato(); return; }
     if (n === 0) { prontoParaChecklist(!!V.reg.veiculo); return; }
-    sistema(n + ' de ' + C.itens.length + ' itens já respondidos.');
     perguntarItem(n);
   }
 

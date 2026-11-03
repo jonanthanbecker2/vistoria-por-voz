@@ -23,6 +23,15 @@ VOZ_PADRAO = 'pt-BR-FranciscaNeural'
 VOZES_AMOSTRA = ['pt-BR-FranciscaNeural', 'pt-BR-ThalitaMultilingualNeural', 'pt-BR-AntonioNeural', 'pt-BR-MacerioMultilingualNeural']
 FRASE_AMOSTRA = ['saud_manha', 'item_oleo_motor', 'conf_oleo_motor_1', 'acao_CONTATO_CENTRAL']
 
+# Só muda o som, não o texto da tela: siglas lidas do jeito que se fala no pátio
+PRONUNCIA = {'OLUC': 'Óluc'}
+
+
+def para_fala(texto):
+    for escrito, falado in PRONUNCIA.items():
+        texto = texto.replace(escrito, falado)
+    return texto
+
 try:
     import edge_tts
 except ImportError:
@@ -32,7 +41,7 @@ except ImportError:
 
 
 async def gerar(texto, voz, destino, velocidade):
-    await edge_tts.Communicate(texto, voz, rate=velocidade).save(destino)
+    await edge_tts.Communicate(para_fala(texto), voz, rate=velocidade).save(destino)
 
 
 async def principal(a):
@@ -47,18 +56,27 @@ async def principal(a):
             await gerar(texto, voz, arq, a.velocidade)
             print('amostra:', arq)
         return
-    feitas, erros = [], []
+    # Regera só o que mudou: compara o texto atual com o texto usado na última geração
+    anterior = {}
+    try:
+        ind = json.load(open(os.path.join(SAIDA, 'indice.json'), encoding='utf-8'))
+        if ind.get('voz') == a.voz and ind.get('velocidade') == a.velocidade:
+            anterior = ind.get('textos', {})
+    except Exception:
+        pass
+    feitas, erros, textos = [], [], {}
     for i, (k, texto) in enumerate(falas.items(), 1):
         arq = os.path.join(SAIDA, k + '.mp3')
-        if os.path.exists(arq) and os.path.getsize(arq) > 0 and not a.refazer:
-            feitas.append(k); continue
+        igual = anterior.get(k) == texto
+        if igual and os.path.exists(arq) and os.path.getsize(arq) > 0 and not a.refazer:
+            feitas.append(k); textos[k] = texto; continue
         try:
             await gerar(texto, a.voz, arq, a.velocidade)
-            feitas.append(k)
+            feitas.append(k); textos[k] = texto
             print(f'[{i}/{len(falas)}] {k}')
         except Exception as e:
             erros.append(k); print(f'[{i}/{len(falas)}] ERRO {k}: {e}')
-    indice = {'voz': a.voz, 'velocidade': a.velocidade, 'gerado_em': datetime.datetime.now().isoformat(timespec='seconds'), 'chaves': sorted(feitas)}
+    indice = {'voz': a.voz, 'velocidade': a.velocidade, 'gerado_em': datetime.datetime.now().isoformat(timespec='seconds'), 'chaves': sorted(feitas), 'textos': textos}
     json.dump(indice, open(os.path.join(SAIDA, 'indice.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'\n{len(feitas)} áudios prontos em {SAIDA}' + (f' — {len(erros)} com erro: {erros}' if erros else ''))
 
