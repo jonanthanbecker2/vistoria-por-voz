@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.3.0';
+  var VERSAO_APP = '0.3.1';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   var CFG = { centralConectada: false };
   var app = document.getElementById('app');
@@ -135,33 +135,59 @@
     },
     temTodas: function (chaves) { var ix = this.indice; return !!ix && chaves.length > 0 && chaves.every(function (k) { return ix[k]; }); }
   };
+  // Um único elemento de áudio, reaproveitado para todas as falas.
+  // Navegadores como o Samsung Internet e o Safari só deixam tocar som que nasce de um toque;
+  // um elemento "destravado" num toque pode depois tocar uma fala atrás da outra.
+  var SILENCIO = 'data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA';
   var Player = {
-    fila: [], el: null,
+    fila: [], el: null, tocando: false, travado: false, destravado: false,
+    audio: function () { if (!this.el) { this.el = new Audio(); this.el.preload = 'auto'; } return this.el; },
+    // chamado em todo toque na tela
+    destravar: function () {
+      var self = this, a = this.audio();
+      if (this.travado && this.fila.length) { this.travado = false; this.proximo(); return; }
+      if (this.destravado || this.tocando) return;
+      try {
+        a.onended = a.onerror = null; a.src = SILENCIO;
+        var p = a.play(); this.destravado = true;
+        if (p && p.catch) p.catch(function () { self.destravado = false; });
+      } catch (e) {}
+    },
     parar: function () {
-      this.fila = [];
-      if (this.el) { this.el.onended = this.el.onerror = null; try { this.el.pause(); } catch (e) {} this.el = null; }
+      this.fila = []; this.tocando = false; this.travado = false;
+      if (this.el) { this.el.onended = this.el.onerror = null; try { this.el.pause(); } catch (e) {} }
     },
     enfileirar: function (chaves, texto) {
       this.fila.push({ chaves: chaves.slice(), texto: texto });
-      if (!this.el) this.proximo();
+      if (!this.tocando && !this.travado) this.proximo();
     },
     proximo: function () {
       var self = this, item = this.fila[0];
-      if (!item) { this.el = null; return; }
+      if (!item) { this.tocando = false; return; }
       if (!item.chaves.length) { this.fila.shift(); this.proximo(); return; }
-      var k = item.chaves.shift(), a = new Audio('audio/' + k + '.mp3');
-      this.el = a;
-      a.onended = function () { if (self.el === a) self.proximo(); };
-      // Se um áudio falhar, desliga os áudios gravados e lê o restante com a voz do celular
+      var k = item.chaves[0], a = this.audio(), meu = {};
+      this.atual = meu; this.tocando = true;
+      a.onended = function () { if (self.atual !== meu) return; item.chaves.shift(); self.proximo(); };
+      // Arquivo com problema: lê com a voz do celular o que falta e segue
       a.onerror = function () {
-        if (self.el !== a) return;
-        var resto = self.fila.map(function (x) { return x.texto; }).join(' ');
-        Clips.indice = null; self.parar(); Fala.falar(resto, true);
+        if (self.atual !== meu) return;
+        var resto = [item.chaves.map(function (c) { return (window.FALAS || {})[c] || ''; }).join(' ')]
+          .concat(self.fila.slice(1).map(function (x) { return x.texto; })).join(' ');
+        self.parar(); Fala.falar(resto, true);
       };
+      a.src = 'audio/' + k + '.mp3';
       var p = a.play();
-      if (p && p.catch) p.catch(function () { if (self.el === a && a.onerror) a.onerror(); });
+      // Navegador bloqueou (sem toque recente): guarda a fila e retoma no próximo toque
+      if (p && p.catch) p.catch(function (e) {
+        if (self.atual !== meu) return;
+        if (e && e.name === 'NotAllowedError') { self.tocando = false; self.travado = true; self.destravado = false; }
+        else if (a.onerror) a.onerror();
+      });
     }
   };
+  ['pointerdown', 'touchstart', 'keydown'].forEach(function (ev) {
+    document.addEventListener(ev, function () { Player.destravar(); }, { capture: true, passive: true });
+  });
 
   /* ---------------- voz: reconhecimento (o motorista fala) ---------------- */
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
