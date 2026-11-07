@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.3.1';
+  var VERSAO_APP = '0.4.0';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   var CFG = { centralConectada: false };
   var app = document.getElementById('app');
@@ -372,7 +372,7 @@
       var pend = ult.pendencias.length;
       corpo.appendChild(el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Última vistoria'),
         el('div', null, 'Frota ' + (ult.frota || '—') + ' · ' + fmt(ult.hora_inicio)),
-        el('div', { class: 'dica' }, ult.tipo_encerramento === 'imediato' ? 'Encerrada — veículo não deve ser ligado' :
+        el('div', { class: 'dica' }, infoEncerramento(ult) ? infoEncerramento(ult).selo :
           pend ? pend + ' ponto(s) de atenção' : 'Sem não conformidades')));
     }
     corpo.appendChild(linha(btn('Histórico (' + hist.length + ')', 'sec', telaHistorico), btn('Configurações', 'sec', telaConfig)));
@@ -591,12 +591,18 @@
       duracao_inspecao_seg: V.t.m_prontidao != null ? seg(V.t.m_anuncio, V.t.m_prontidao) : null,
       duracao_resposta_seg: V.t.m_prontidao != null ? seg(V.t.m_prontidao, m) : null
     });
-    if (o.acao === 'ENCERRAR_MOTOR') { encerrarImediato(it, o); return; }
+    if ((ACOES[o.acao] || {}).imediata) { encerrarImediato(it, o); return; }
     if (o.acao === 'REGISTRAR_RELATO') { salvarAndamento(); pedirRelato(); return; }
     var a = ACOES[o.acao] || {};
     if (!a.silencioso && a.texto) V.reg.pendencias.push({ item_id: it.id, rotulo: it.rotulo, nivel: o.nivel, acao: o.acao });
     salvarAndamento();
-    perguntarItem(V.idx + 1);
+    perguntarItem(proximoSemResposta(V.idx + 1));
+  }
+  // Próxima pergunta ainda não respondida (importa na retomada de vistoria de versão anterior)
+  function proximoSemResposta(de) {
+    var feitos = {}; V.reg.respostas.forEach(function (r) { feitos[r.item_id] = 1; });
+    var i = de; while (i < CHECKLIST.itens.length && feitos[CHECKLIST.itens[i].id]) i++;
+    return i;
   }
   function voltarItem() {
     if (!V.reg.respostas.length) return;
@@ -604,18 +610,23 @@
     V.reg.pendencias = V.reg.pendencias.filter(function (p) { return p.item_id !== ult.item_id; });
     sistema('Voltando ao item anterior.');
     salvarAndamento();
-    perguntarItem(ult.ordem - 1);
+    var iv = idxDoItem(ult.item_id); perguntarItem(iv >= 0 ? iv : Math.max(0, V.idx - 1));
   }
 
   function encerrarImediato(it, o) {
-    var txt = CFG.centralConectada
-      ? 'Não ligue o veículo: risco de danificar o motor. A central foi acionada. A vistoria foi encerrada.'
-      : 'Não ligue o veículo: risco de danificar o motor. Entre em contato com a central agora. A vistoria foi encerrada e salva.';
-    cartao('grave', 'Ação imediata · ' + it.rotulo, 'Não ligue o veículo');
+    var ac = ACOES[o.acao], F = window.FALAS || {};
+    V.reg.motivo_encerramento = ac.motivo;
+    cartao('grave', 'Ação imediata · ' + it.rotulo, ac.cartao);
     V.reg.pendencias.push({ item_id: it.id, rotulo: it.rotulo, nivel: o.nivel, acao: o.acao });
-    appDiz('Atenção! ' + txt, CFG.centralConectada ? null : ['encerrar_motor']);
+    appDiz(F[ac.fala] || ac.cartao, [ac.fala]);
     finalizar('imediato');
   }
+  function infoEncerramento(v) {
+    if (v.tipo_encerramento !== 'imediato') return null;
+    var ac = v.motivo_encerramento === 'risco_operacao' ? ACOES.ENCERRAR_RISCO : ACOES.ENCERRAR_MOTOR;
+    return ac;
+  }
+  function idxDoItem(id) { var L = CHECKLIST.itens; for (var i = 0; i < L.length; i++) if (L[i].id === id) return i; return -1; }
 
   function pedirRelato() {
     UI.sub.textContent = 'Relato livre';
@@ -702,12 +713,13 @@
     var n = V.reg.respostas.length, ult = V.reg.respostas[n - 1];
     if (ult && ult.acao === 'REGISTRAR_RELATO') { pedirRelato(); return; }
     if (n === 0) { prontoParaChecklist(!!V.reg.veiculo); return; }
-    perguntarItem(n);
+    V.reg.versao_checklist = CHECKLIST.versao;
+    perguntarItem(proximoSemResposta(0));
   }
 
   /* ---------------- histórico e detalhe ---------------- */
   function statusVistoria(v) {
-    if (v.tipo_encerramento === 'imediato') return ['grave', 'Encerrada · não ligar'];
+    if (infoEncerramento(v)) return ['grave', infoEncerramento(v).selo];
     return v.pendencias.length ? ['leve', v.pendencias.length + ' ponto(s) de atenção'] : ['ok', 'Sem não conformidade'];
   }
   function telaHistorico() {
@@ -733,7 +745,7 @@
     [['Motorista', v.motorista], ['Frota', (v.frota || '—') + (v.frota_nao_cadastrada ? ' (fora do cadastro)' : '')],
       ['Veículo', [veic.marca, veic.modelo].filter(Boolean).join(' ') || '—'], ['Centro de coletas', veic.centro || '—'],
       ['Início', fmt(v.hora_inicio)], ['Fim', fmt(v.hora_fim)], ['Duração total', fmtDur(v.duracao_total_seg)],
-      ['Encerramento', v.tipo_encerramento === 'imediato' ? 'Imediato (não ligar)' : 'Normal'], ['Aparelho', v.dispositivo]]
+      ['Encerramento', infoEncerramento(v) ? infoEncerramento(v).detalhe : 'Normal'], ['Aparelho', v.dispositivo]]
       .forEach(function (p) { resumo.appendChild(el('tr', null, el('td', null, p[0]), el('td', null, p[1]))); });
     var tab = el('table', { class: 'resp' }, el('thead', null, el('tr', null, el('th', null, 'Item'), el('th', null, 'Resposta'),
       el('th', null, 'Inspeção'), el('th', null, 'Via'))));
@@ -756,7 +768,7 @@
 
   /* ---------------- exportação ---------------- */
   var COLS = ['vistoria_id', 'motorista', 'frota', 'frota_fora_cadastro', 'marca', 'modelo', 'tipo', 'centro_coletas', 'hora_inicio', 'hora_fim',
-    'duracao_total_seg', 'tipo_encerramento', 'retomada', 'dispositivo', 'versao_checklist', 'versao_app', 'item_ordem', 'item_id', 'item',
+    'duracao_total_seg', 'tipo_encerramento', 'motivo_encerramento', 'retomada', 'dispositivo', 'versao_checklist', 'versao_app', 'item_ordem', 'item_id', 'item',
     'pergunta', 'resposta', 'nivel', 'acao', 'sinal', 'transcricao', 'tentativas_voz', 't_anuncio', 't_prontidao', 't_resposta',
     'duracao_inspecao_seg', 'duracao_resposta_seg', 'relato_livre'];
   function gerarCSV(lista) {
@@ -771,7 +783,7 @@
       var ve = v.veiculo || {};
       var base = { vistoria_id: v.id, motorista: v.motorista, frota: v.frota, frota_fora_cadastro: v.frota_nao_cadastrada ? 'sim' : '',
         marca: ve.marca, modelo: ve.modelo, tipo: ve.tipo, centro_coletas: ve.centro, hora_inicio: v.hora_inicio, hora_fim: v.hora_fim,
-        duracao_total_seg: v.duracao_total_seg, tipo_encerramento: v.tipo_encerramento, retomada: v.retomada ? 'sim' : '',
+        duracao_total_seg: v.duracao_total_seg, tipo_encerramento: v.tipo_encerramento, motivo_encerramento: v.motivo_encerramento || '', retomada: v.retomada ? 'sim' : '',
         dispositivo: v.dispositivo, versao_checklist: v.versao_checklist, versao_app: v.versao_app, relato_livre: v.relato_livre };
       (v.respostas.length ? v.respostas : [{}]).forEach(function (r) {
         var row = Object.assign({}, base, { item_ordem: r.ordem, item_id: r.item_id, item: r.rotulo, pergunta: r.pergunta, resposta: r.resposta,

@@ -21,10 +21,11 @@ Abre no Chrome do celular, instala na tela inicial e funciona sem internet depoi
 
 1. **Primeira abertura:** cadastra o motorista deste aparelho (no app definitivo virá do cadastro da empresa).
 2. **Identificação:** saudação pelo nome → frota por voz ou teclado → confirmação → dados do veículo (se houver cadastro).
-3. **Checklist (22 itens):** o app anuncia o item e as opções; o motorista confere e responde por toque ou voz.
+3. **Checklist (24 itens):** o app anuncia o item e as opções; o motorista confere e responde por toque ou voz.
    - Resposta por **voz** sempre pede confirmação (pode haver erro de reconhecimento).
    - Resposta por **toque** registra direto (configurável em Configurações).
    - Óleo ou água **muito baixo/seco** encerra a vistoria na hora: "não ligue o veículo".
+   - Pneus **danificados ou sem condições de uso** ou parafusos de roda **soltos ou faltando** encerram a vistoria na hora: "risco de operação, não utilize o equipamento".
 4. **Resumo:** pendências agrupadas por ação, da mais urgente à menos urgente.
 5. Vistoria interrompida fica salva e pode ser **continuada** na tela inicial.
 

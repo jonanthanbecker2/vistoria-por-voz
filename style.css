@@ -2,9 +2,9 @@
    Botões de resposta propositalmente neutros: cor não deve induzir a resposta. */
 :root {
   --bg: #EDF1F4; --sup: #FFFFFF; --sup2: #E1E7ED; --tinta: #12181F; --tinta2: #536170;
-  --linha: #C9D3DC; --acento: #D9590B; --acento-tinta: #FFFFFF; --acento-suave: #FBE4D4;
+  --linha: #C9D3DC; --acento: #0F3A6B; --acento-tinta: #FFFFFF; --acento-suave: #DCE6F2;
   --ok: #1D8A4C; --leve: #9A6500; --grave: #C2352A;
-  --app-b: #E4EBF1; --mot-b: #D9590B; --mot-tinta: #FFFFFF;
+  --app-b: #E4EBF1; --mot-b: #0F3A6B; --mot-tinta: #FFFFFF;
   --fonte: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   --mono: ui-monospace, "Roboto Mono", "SFMono-Regular", Menlo, monospace;
   color-scheme: light;
@@ -12,9 +12,9 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0E141A; --sup: #161F28; --sup2: #1F2B36; --tinta: #EDF2F6; --tinta2: #9BAEBE;
-    --linha: #2A3844; --acento: #FF7A1F; --acento-tinta: #10161C; --acento-suave: #3A2416;
+    --linha: #2A3844; --acento: #2F6DB5; --acento-tinta: #FFFFFF; --acento-suave: #172A40;
     --ok: #3CC673; --leve: #E0A93E; --grave: #FF6A5C;
-    --app-b: #1F2A35; --mot-b: #FF7A1F; --mot-tinta: #10161C;
+    --app-b: #1F2A35; --mot-b: #2F6DB5; --mot-tinta: #FFFFFF;
     color-scheme: dark;
   }
 }

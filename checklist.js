@@ -56,6 +56,15 @@
     { id: 'oleo_motor', rotulo: 'Nível de óleo do motor', pergunta: 'Como está o nível de óleo do motor?',
       opcoes: nivelOpcoes('Está no nível', 'Baixou um pouco', 'Muito baixo ou seco', 'COMPLETAR_NIVEL', 'ENCERRAR_MOTOR',
         CH_NIVEL_OK, CH_NIVEL_LEVE, ['muito baixo', 'seco', 'seca', 'vazio', 'sem oleo', 'secou', 'nada', 'muito']) },
+    { id: 'vazamento_oleo', rotulo: 'Vazamento de óleo do motor', pergunta: 'Existe sinal de vazamento de óleo do motor abaixo do veículo?',
+      opcoes: [
+        { texto: 'Não apresenta vazamento', nivel: 'OK', acao: 'SEGUIR',
+          chaves: ['nao apresenta', 'sem vazamento', 'nenhum', 'nao tem', 'nao', 'seco', 'limpo', 'tudo certo', 'normal'] },
+        { texto: 'Tem pequeno vazamento', nivel: 'LEVE', acao: 'CONTATO_CENTRAL',
+          chaves: ['pequeno', 'pouco', 'pouquinho', 'gotejando', 'gota', 'gotas', 'leve', 'umido', 'mancha'] },
+        { texto: 'Possui grande vazamento', nivel: 'GRAVE', acao: 'CONTATO_CENTRAL',
+          chaves: ['grande', 'muito', 'bastante', 'escorrendo', 'pingando muito', 'poca'] }
+      ] },
     { id: 'agua_radiador', rotulo: 'Nível de água do radiador', pergunta: 'Como está o nível de água do radiador?',
       opcoes: nivelOpcoes('Está no nível', 'Baixou um pouco', 'Muito baixo ou seco', 'COMPLETAR_NIVEL', 'ENCERRAR_MOTOR',
         CH_NIVEL_OK, CH_NIVEL_LEVE, ['muito baixo', 'seco', 'seca', 'vazio', 'sem agua', 'secou', 'nada', 'muito']) },
@@ -72,7 +81,7 @@
       opcoes: nivelOpcoes('Boas condições', 'Riscos que não atrapalham a visão', 'Riscos ou trincas que atrapalham a visão', 'SO_REGISTRA', 'CONTATO_CENTRAL',
         CH_VIS_OK, CH_VIS_LEVE, CH_VIS_GRAVE) },
     { id: 'pneus', rotulo: 'Pneus', pergunta: 'Quais as condições dos pneus?',
-      opcoes: nivelOpcoes('Sulco ideal e calibrados', 'Sulco baixo ou precisam de calibragem', 'Danificados ou sem condições de uso', 'REPARO_RECOMENDADO', 'CONTATO_CENTRAL',
+      opcoes: nivelOpcoes('Sulco ideal e calibrados', 'Sulco baixo ou precisam de calibragem', 'Danificados ou sem condições de uso', 'REPARO_RECOMENDADO', 'ENCERRAR_RISCO',
         ['bom', 'bons', 'ideal', 'calibrado', 'normal', 'ok', 'tudo certo'],
         ['sulco baixo', 'calibrar', 'calibragem', 'calibracao', 'baixo', 'rodizio', 'murcho', 'pouco'],
         ['danificado', 'rasgado', 'estourado', 'furado', 'sem condicoes', 'careca', 'bolha', 'cortado']) },
@@ -80,11 +89,12 @@
       opcoes: [
         { texto: 'Todos presentes e bem fixados', nivel: 'OK', acao: 'SEGUIR',
           chaves: ['boa fixacao', 'bem fixado', 'firme', 'firmes', 'fixados', 'apertado', 'apertados', 'ok', 'normal', 'todos', 'tudo certo', 'bom'] },
-        { texto: 'Algum solto ou faltando', nivel: 'GRAVE', acao: 'CONTATO_CENTRAL',
+        { texto: 'Algum solto ou faltando', nivel: 'GRAVE', acao: 'ENCERRAR_RISCO',
           chaves: ['solto', 'soltos', 'faltando', 'falta', 'frouxo', 'sem parafuso'] }
       ] },
     { id: 'calcos', rotulo: 'Calços de roda', pergunta: 'O veículo possui calços de roda em boas condições?', opcoes: sn('APOIO_COLETAS') },
     { id: 'cones', rotulo: 'Cones', pergunta: 'O veículo possui a quantidade de cones necessária, em boas condições?', opcoes: sn('APOIO_COLETAS') },
+    { id: 'carrinho_tambor', rotulo: 'Carrinho auxiliar', pergunta: 'O veículo possui o carrinho auxiliar para movimentação de tambor?', opcoes: sn('APOIO_COLETAS') },
     { id: 'extintores', rotulo: 'Extintores', pergunta: 'Os extintores estão conservados e dentro da validade?', opcoes: sn('APOIO_COLETAS') },
     { id: 'conservacao_visual', rotulo: 'Conservação visual', pergunta: 'Como está a conservação externa e a padronização visual do veículo?',
       opcoes: [
@@ -109,12 +119,16 @@
   ];
   itens.forEach(function (it, i) { it.ordem = i + 1; });
 
-  window.CHECKLIST = { versao: 'diario-v1', itens: itens };
+  window.CHECKLIST = { versao: 'diario-v2', itens: itens };
 
   // Ações: o que o app faz com cada resposta.
   // prioridade ordena o resumo final (menor = mais urgente).
   window.ACOES = {
-    ENCERRAR_MOTOR: { prioridade: 0, imediata: true },
+    // Ações imediatas: encerram a vistoria na hora. fala = chave em falas.js
+    ENCERRAR_MOTOR: { prioridade: 0, imediata: true, motivo: 'motor', fala: 'encerrar_motor',
+      cartao: 'Não ligue o veículo', selo: 'Encerrada · não ligar', detalhe: 'Imediato (não ligar)' },
+    ENCERRAR_RISCO: { prioridade: 0, imediata: true, motivo: 'risco_operacao', fala: 'encerrar_risco',
+      cartao: 'Não utilize o equipamento', selo: 'Encerrada · risco de operação', detalhe: 'Imediato (risco de operação)' },
     NAO_UTILIZAR: { prioridade: 1, texto: 'Não utilize o veículo e entre em contato com a central.' },
     CONTATO_CENTRAL: { prioridade: 2, texto: 'Recomendamos entrar em contato com a central antes de iniciar o deslocamento.' },
     REPARO_CENTRAL: { prioridade: 3, texto: 'Solicite o reparo à central.' },

@@ -31,6 +31,7 @@
     conf_nao: 'Entendi: não. Confirma?',
     nao_entendi: 'Não entendi. Pode falar de novo, ou tocar na resposta.',
     encerrar_motor: 'Atenção! Não ligue o veículo: há risco de danificar o motor. Entre em contato com a central agora. A vistoria foi encerrada e salva.',
+    encerrar_risco: 'Risco de operação! Não utilize o equipamento e entre em contato com a Central de Atendimento. A vistoria foi encerrada e salva.',
     relato_pedir: 'Pode relatar. Fale ou escreva o que você observou, e toque em concluir.',
     relato_ok: 'Relato registrado.',
     resultado_ok: 'Nenhuma não conformidade encontrada. Bom trabalho!',
