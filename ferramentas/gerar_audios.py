@@ -24,7 +24,9 @@ VOZES_AMOSTRA = ['pt-BR-FranciscaNeural', 'pt-BR-ThalitaMultilingualNeural', 'pt
 FRASE_AMOSTRA = ['saud_manha', 'item_oleo_motor', 'conf_oleo_motor_1', 'acao_CONTATO_CENTRAL']
 
 # Só muda o som, não o texto da tela: siglas lidas do jeito que se fala no pátio
-PRONUNCIA = {'OLUC': 'Óluc', ' KM ': ' ká éme '}
+PRONUNCIA = {'OLUC': 'Óluc', ' KM ': ' ká éme ',
+             # siglas dos documentos: soletradas como se fala no pátio
+             'CRLV': 'cê érre éle vê', 'CIPP': 'cê í pê pê', 'CIV': 'cê í vê', 'CTF': 'cê tê éfe', 'ATIPP': 'á tê í pê pê'}
 
 
 def para_fala(texto):

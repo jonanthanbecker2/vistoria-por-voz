@@ -43,7 +43,7 @@
     acao_NAO_UTILIZAR: 'Não utilize o veículo, e entre em contato com a central.',
     acao_CONTATO_CENTRAL: 'Recomendamos falar com a central antes de sair com o veículo.',
     acao_REPARO_CENTRAL: 'Solicite o reparo à central.',
-    acao_APOIO_COLETAS: 'Solicite o reparo ou a troca no centro de coletas.',
+    acao_APOIO_COLETAS: 'Solicite o reparo, a troca ou os itens faltantes no centro de coletas.',
     acao_COMPLETAR_NIVEL: 'Complete o nível, e acompanhe se volta a baixar.',
     acao_REPARO_RECOMENDADO: 'Recomendamos providenciar o reparo, mas o uso não está impedido.'
   };
@@ -63,6 +63,7 @@
     Object.keys(FIXAS).forEach(function (k) { f[k] = FIXAS[k]; });
     checklist.itens.forEach(function (it) {
       f['item_' + it.id] = (ehSimNao(it) || !it.opcoes.length) ? it.pergunta : it.pergunta + ' ' + opcoesFaladas(it);
+      if (it.lista && it.lista.length) f['item_' + it.id] = it.pergunta + ' ' + it.lista.join(', ') + '.';
       f['rot_' + it.id] = it.rotulo + '.';
       it.opcoes.forEach(function (o, i) {
         if (!/^(sim|não)$/i.test(o.texto)) f['conf_' + it.id + '_' + i] = 'Entendi: ' + minuscula(o.texto) + '. Confirma?';

@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.5.1';
+  var VERSAO_APP = '0.6.0';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   var CFG = { centralConectada: false };
   var app = document.getElementById('app');
@@ -558,7 +558,14 @@
   }
 
   /* ---------------- itens do checklist ---------------- */
+  // Pergunta condicional: só vale se a resposta do item de referência for a esperada
+  function aplicavel(it) {
+    if (!it || !it.condicao) return true;
+    var r = V.reg.respostas.filter(function (x) { return x.item_id === it.condicao.item; })[0];
+    return !!r && r.resposta === it.condicao.resposta;
+  }
   function perguntarItem(i, comAbertura) {
+    while (C.itens[i] && !aplicavel(C.itens[i])) i++;
     var it = C.itens[i];
     if (!it) { finalizar('normal'); return; }
     V.idx = i;
@@ -567,7 +574,8 @@
     // t_anuncio: momento em que o item foi anunciado. A janela de inspeção vai daqui até a prontidão.
     V.t = { t_anuncio: isoLocal(), m_anuncio: mono(), t_prontidao: null, m_prontidao: null, tentativas_voz: 0 };
     if (comAbertura) balao('app', textoDasChaves(['inicio_checklist']));
-    cartao('item', it.rotulo, it.pergunta);
+    cartao('item', it.rotulo, it.pergunta,
+      it.lista ? el('ul', { class: 'c-lista' }, it.lista.map(function (d) { return el('li', null, d); })) : null);
     Fala.dizer(comAbertura ? ['inicio_checklist', 'item_' + it.id] : ['item_' + it.id]);
     if (it.tipo === 'numero') renderNumero(it); else renderOpcoes(it);
   }

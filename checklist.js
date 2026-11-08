@@ -106,6 +106,11 @@
     { id: 'buzina', rotulo: 'Buzina', pergunta: 'A buzina está funcionando?', opcoes: sn('CONTATO_CENTRAL') },
     { id: 'tacografo', rotulo: 'Tacógrafo', pergunta: 'O tacógrafo está funcionando e com lacre?', opcoes: sn('CONTATO_CENTRAL') },
     { id: 'pasta_documentos', rotulo: 'Pasta de documentos', pergunta: 'A pasta de documentos está dentro do veículo?', opcoes: sn('APOIO_COLETAS') },
+    // Condicional: só pergunta se a pasta de documentos estiver no veículo
+    { id: 'documentos_pasta', rotulo: 'Documentos da pasta', pergunta: 'Dentro da pasta de documentos, constam todos os documentos abaixo?',
+      condicao: { item: 'pasta_documentos', resposta: 'Sim' },
+      lista: ['CRLV', 'CIV', 'CIPP', 'Certificado do tacógrafo', 'CTF', 'ATIPP', 'Licenças ambientais estadual e municipal, se a rota exigir'],
+      opcoes: sn('APOIO_COLETAS') },
     { id: 'kit_emergencia', rotulo: 'Kit de emergência', pergunta: 'O kit de emergência está completo, lacrado e em boas condições?', opcoes: sn('APOIO_COLETAS') },
     { id: 'palhetas', rotulo: 'Palhetas do para-brisa', pergunta: 'As palhetas do para-brisa estão funcionando e em bom estado?', opcoes: sn('REPARO_RECOMENDADO', 'LEVE') },
     { id: 'luz_painel', rotulo: 'Luz de falha no painel', pergunta: 'Existe alguma luz de falha acesa no painel?', opcoes: snInv('CONTATO_CENTRAL') },
@@ -122,7 +127,7 @@
   ];
   itens.forEach(function (it, i) { it.ordem = i + 1; });
 
-  window.CHECKLIST = { versao: 'diario-v3', itens: itens };
+  window.CHECKLIST = { versao: 'diario-v4', itens: itens };
 
   // Ações: o que o app faz com cada resposta.
   // prioridade ordena o resumo final (menor = mais urgente).
@@ -135,7 +140,7 @@
     NAO_UTILIZAR: { prioridade: 1, texto: 'Não utilize o veículo e entre em contato com a central.' },
     CONTATO_CENTRAL: { prioridade: 2, texto: 'Recomendamos entrar em contato com a central antes de iniciar o deslocamento.' },
     REPARO_CENTRAL: { prioridade: 3, texto: 'Solicite o reparo à central.' },
-    APOIO_COLETAS: { prioridade: 4, texto: 'Solicite o reparo ou a substituição ao centro de coletas.' },
+    APOIO_COLETAS: { prioridade: 4, texto: 'Solicite o reparo, a troca ou os itens faltantes no centro de coletas.' },
     COMPLETAR_NIVEL: { prioridade: 5, texto: 'Complete o nível e acompanhe se voltará a baixar.' },
     REPARO_RECOMENDADO: { prioridade: 6, texto: 'Recomendamos providenciar o reparo, sem impedir o uso agora.' },
     SO_REGISTRA: { prioridade: 9, silencioso: true },
