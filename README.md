@@ -67,3 +67,9 @@ Para gerar ou atualizar os áudios (Windows, com Python instalado e internet):
 3. Depois de editar `falas.js`, rode `node ferramentas/exportar_falas.js` e gere os áudios de novo.
 
 Os áudios ficam guardados no celular junto com o app (funcionam sem internet).
+
+## Auditoria e integridade (v0.7.0)
+
+- **Localização** (configurável em `CFG.localizacao`, a validar pela empresa/LGPD): registrada só durante a vistoria, em três momentos — início, início do checklist e conclusão (lat, lon, precisão). Aviso ao motorista antes da primeira vistoria. Permissão negada não impede a vistoria; a recusa fica registrada.
+- **Validações cruzadas** (neste aparelho; no servidor valerão entre todos): KM menor que o da última vistoria da frota (avisa e pede conferência) e frota já vistoriada no dia (avisa e registra). Tempo de vistoria: só registrado, sem limite nesta fase.
+- **Imutabilidade:** cada vistoria concluída recebe um lacre SHA-256 encadeado ao da anterior. Alteração posterior é detectada no detalhe e na planilha. Informações posteriores entram como **complementos**, com data e lacre próprios. Apagar vistorias só no modo de teste (`?teste=1`).

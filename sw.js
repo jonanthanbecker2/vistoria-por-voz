@@ -1,6 +1,6 @@
 /* Service worker: guarda o app no aparelho para abrir sem internet.
    Ao publicar uma nova versão, altere VERSAO para limpar o cache antigo. */
-var VERSAO = 'vistoria-0.6.2';
+var VERSAO = 'vistoria-0.7.0';
 var ARQUIVOS = ['./', './index.html', './style.css', './app.js', './checklist.js', './falas.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png'];
 

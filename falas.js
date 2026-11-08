@@ -33,6 +33,8 @@
     encerrar_motor: 'Atenção! Não ligue o veículo: há risco de danificar o motor. Entre em contato com a central agora. A vistoria foi encerrada e salva.',
     encerrar_risco: 'Risco de operação! Não utilize o equipamento e entre em contato com a Central de Atendimento. A vistoria foi encerrada e salva.',
     km_confira: 'Confira o número do KM na tela. Está correto?',
+    km_menor: 'O KM informado é menor que o da última vistoria desta frota. Confira o número na tela. Está correto?',
+    frota_repetida: 'Esta frota já teve uma vistoria hoje neste aparelho.',
     km_zero: 'A quilometragem precisa ser maior que zero.',
     relato_pedir: 'Pode relatar. Fale ou escreva o que você observou, e toque em concluir.',
     relato_ok: 'Relato registrado.',

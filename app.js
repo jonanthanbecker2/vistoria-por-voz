@@ -7,9 +7,16 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.6.2';
+  var VERSAO_APP = '0.7.0';
   var C = window.CHECKLIST, ACOES = window.ACOES;
-  var CFG = { centralConectada: false };
+  // Modo de teste (abrir o app com ?teste=1): libera "apagar vistorias" para treinamento e testes
+  try { if (/[?&]teste=1/.test(location.search)) localStorage.setItem('vv_modo_teste', '1'); if (/[?&]teste=0/.test(location.search)) localStorage.removeItem('vv_modo_teste'); } catch (e) {}
+  var MODO_TESTE = (function () { try { return localStorage.getItem('vv_modo_teste') === '1'; } catch (e) { return false; } })();
+  var CFG = {
+    centralConectada: false,
+    // Localização no início, no início do checklist e na conclusão (a validar pela empresa / LGPD).
+    localizacao: true
+  };
   var app = document.getElementById('app');
 
   /* ---------------- utilidades ---------------- */
@@ -356,6 +363,131 @@
     });
   }
 
+  /* ---------------- lacre digital (imutabilidade) ---------------- */
+  // SHA-256 (síncrono) sobre o JSON canônico (chaves em ordem). Qualquer alteração no registro muda o lacre.
+  function sha256(txt) {
+    var K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,
+      0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+      0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,
+      0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+      0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,
+      0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+    var b = unescape(encodeURIComponent(txt)), n = b.length, i, j;
+    var w = new Array(((n + 9 + 63) >> 6) << 4).fill(0);
+    for (i = 0; i < n; i++) w[i >> 2] |= b.charCodeAt(i) << (24 - (i % 4) * 8);
+    w[n >> 2] |= 0x80 << (24 - (n % 4) * 8);
+    w[w.length - 1] = n * 8;
+    var H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19], W = new Array(64);
+    var r = function (x, k) { return (x >>> k) | (x << (32 - k)); };
+    for (i = 0; i < w.length; i += 16) {
+      for (j = 0; j < 64; j++) W[j] = j < 16 ? w[i + j] : (((r(W[j-2],17) ^ r(W[j-2],19) ^ (W[j-2] >>> 10)) + W[j-7] + (r(W[j-15],7) ^ r(W[j-15],18) ^ (W[j-15] >>> 3)) + W[j-16]) | 0);
+      var a = H[0], bb = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      for (j = 0; j < 64; j++) {
+        var t1 = (h + (r(e,6) ^ r(e,11) ^ r(e,25)) + ((e & f) ^ (~e & g)) + K[j] + W[j]) | 0;
+        var t2 = ((r(a,2) ^ r(a,13) ^ r(a,22)) + ((a & bb) ^ (a & c) ^ (bb & c))) | 0;
+        h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = bb; bb = a; a = (t1 + t2) | 0;
+      }
+      H = [H[0]+a|0, H[1]+bb|0, H[2]+c|0, H[3]+d|0, H[4]+e|0, H[5]+f|0, H[6]+g|0, H[7]+h|0];
+    }
+    return H.map(function (x) { return ('00000000' + (x >>> 0).toString(16)).slice(-8); }).join('');
+  }
+  function canonico(v) {
+    if (Array.isArray(v)) return '[' + v.map(canonico).join(',') + ']';
+    if (v && typeof v === 'object') return '{' + Object.keys(v).sort().filter(function (k) { return v[k] !== undefined; })
+      .map(function (k) { return JSON.stringify(k) + ':' + canonico(v[k]); }).join(',') + '}';
+    return JSON.stringify(v === undefined ? null : v);
+  }
+  // Conteúdo lacrado: tudo, menos o próprio lacre e os complementos (que têm lacre próprio)
+  function conteudoLacrado(reg) {
+    var c = {}; Object.keys(reg).forEach(function (k) { if (k !== 'integridade' && k !== 'complementos') c[k] = reg[k]; });
+    if (reg.integridade) c.integridade = { algoritmo: reg.integridade.algoritmo, hash_anterior: reg.integridade.hash_anterior, selado_em: reg.integridade.selado_em };
+    return canonico(c);
+  }
+  function selar(reg, anterior) {
+    reg.integridade = { algoritmo: 'SHA-256', hash_anterior: (anterior && anterior.integridade && anterior.integridade.hash) || null, selado_em: isoLocal() };
+    reg.integridade.hash = sha256(conteudoLacrado(reg));
+  }
+  // 'ok' | 'alterado' | 'sem_lacre'
+  function verificarLacre(reg) {
+    if (!reg.integridade || !reg.integridade.hash) return 'sem_lacre';
+    if (sha256(conteudoLacrado(reg)) !== reg.integridade.hash) return 'alterado';
+    var ant = reg.integridade.hash;
+    for (var i = 0; i < (reg.complementos || []).length; i++) {
+      var c = reg.complementos[i];
+      if (sha256(ant + '|' + c.em + '|' + c.autor + '|' + c.texto) !== c.hash) return 'alterado';
+      ant = c.hash;
+    }
+    return 'ok';
+  }
+  function adicionarComplemento(id, texto) {
+    var hist = Store.get('historico', []), v = hist.filter(function (x) { return x.id === id; })[0];
+    if (!v || !v.integridade) return false;
+    v.complementos = v.complementos || [];
+    var ant = v.complementos.length ? v.complementos[v.complementos.length - 1].hash : v.integridade.hash;
+    var c = { texto: texto, em: isoLocal(), autor: Store.get('motorista', '') };
+    c.hash = sha256(ant + '|' + c.em + '|' + c.autor + '|' + c.texto);
+    v.complementos.push(c); v.status_envio = v.status_envio === 'enviado' ? 'complemento_pendente' : v.status_envio;
+    Store.set('historico', hist); return true;
+  }
+
+  /* ---------------- localização (só durante a vistoria) ---------------- */
+  var Geo = {
+    watch: null, ultima: null,
+    ativo: function () { return CFG.localizacao && 'geolocation' in navigator; },
+    iniciar: function (reg) {
+      // na retomada, mantém o que já foi registrado
+      reg.localizacao = reg.localizacao || { status: this.ativo() ? 'aguardando' : 'desativada', aviso_aceito_em: Store.get('aviso_localizacao', null), pontos: {} };
+      if (!this.ativo()) return;
+      var self = this; this.parar(); this.ultima = null;
+      try {
+        this.watch = navigator.geolocation.watchPosition(function (p) {
+          self.ultima = { lat: +p.coords.latitude.toFixed(6), lon: +p.coords.longitude.toFixed(6), precisao_m: Math.round(p.coords.accuracy), em: isoLocal(), ms: Date.now() };
+          if (!V || V.reg !== reg || reg.hora_fim) return;
+          if (reg.localizacao.status !== 'ok') reg.localizacao.status = 'ok';
+          // momentos que ficaram aguardando a primeira posição
+          Object.keys(reg.localizacao.pontos).forEach(function (m) { if (reg.localizacao.pontos[m].aguardando) reg.localizacao.pontos[m] = self.copia(); });
+          if (!reg.localizacao.pontos.inicio) reg.localizacao.pontos.inicio = self.copia();
+          if (reg.frota) salvarAndamento();
+        }, function (e) {
+          if (!V || V.reg !== reg || reg.hora_fim) return;
+          reg.localizacao.status = e.code === 1 ? 'negada' : (reg.localizacao.status === 'ok' ? 'ok' : 'indisponivel');
+          if (e.code === 1) self.parar();
+        }, { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 });
+      } catch (e) { reg.localizacao.status = 'indisponivel'; }
+    },
+    copia: function () { var u = this.ultima; return u ? { lat: u.lat, lon: u.lon, precisao_m: u.precisao_m, em: u.em, idade_seg: Math.round((Date.now() - u.ms) / 1000) } : null; },
+    // registra um momento: usa a última posição; se ainda não houver, fica aguardando a primeira
+    marcar: function (reg, momento) {
+      if (!reg.localizacao || reg.localizacao.status === 'desativada') return;
+      reg.localizacao.pontos[momento] = this.copia() || (reg.localizacao.status === 'negada' ? { erro: 'negada' } : { aguardando: true, em: isoLocal() });
+    },
+    // fechamento: o que ainda estiver aguardando vira "sem_posicao" (o registro é lacrado em seguida)
+    fechar: function (reg) {
+      if (!reg.localizacao) return;
+      this.marcar(reg, 'fim');
+      Object.keys(reg.localizacao.pontos).forEach(function (m) { if (reg.localizacao.pontos[m].aguardando) reg.localizacao.pontos[m] = { erro: 'sem_posicao' }; });
+      this.parar();
+    },
+    parar: function () { if (this.watch != null) { try { navigator.geolocation.clearWatch(this.watch); } catch (e) {} this.watch = null; } }
+  };
+  function fmtPonto(p) { return !p ? '' : p.erro ? p.erro : p.lat + ',' + p.lon + ' (±' + p.precisao_m + ' m)'; }
+
+  /* ---------------- validações cruzadas (neste aparelho; no servidor, entre todos) ---------------- */
+  function hoje() { return isoLocal().slice(0, 10); }
+  function vistoriaHojeDaFrota(frota) {
+    return Store.get('historico', []).filter(function (v) { return chaveFrota(v.frota) === chaveFrota(frota) && (v.hora_inicio || '').slice(0, 10) === hoje(); })[0] || null;
+  }
+  function ultimoKmDaFrota(frota) {
+    var v = Store.get('historico', []).filter(function (x) { return chaveFrota(x.frota) === chaveFrota(frota) && x.quilometragem; })[0];
+    return v ? { km: v.quilometragem, data: v.hora_inicio, vistoria: v.id } : null;
+  }
+  function alertar(tipo, dados) { V.reg.alertas = V.reg.alertas || []; V.reg.alertas.push(Object.assign({ tipo: tipo, em: isoLocal() }, dados || {})); }
+  function descreverAlerta(a) {
+    if (a.tipo === 'km_menor') return 'KM menor que a última vistoria (' + fmtMilhar(a.km) + ' < ' + fmtMilhar(a.km_anterior) + ')';
+    if (a.tipo === 'frota_repetida_dia') return 'Frota já vistoriada hoje neste aparelho (vistoria ' + a.vistoria_anterior + ')';
+    return a.tipo;
+  }
+
   /* ================= TELAS ================= */
   function telaSetup() {
     limpar();
@@ -468,14 +600,26 @@
       id: 'V' + Date.now().toString(36).toUpperCase(), versao_checklist: C.versao, versao_app: VERSAO_APP,
       motorista: Store.get('motorista', ''), dispositivo: dispositivo(),
       hora_inicio: isoLocal(), hora_fim: null, duracao_total_seg: null, tipo_encerramento: null,
-      frota: null, veiculo: null, frota_nao_cadastrada: false, respostas: [], relato_livre: '', pendencias: [],
+      frota: null, veiculo: null, frota_nao_cadastrada: false, respostas: [], relato_livre: '', pendencias: [], alertas: [],
       central_conectada: CFG.centralConectada, status_envio: 'local', t_acao: null, t_sync: null, retomada: false
     };
   }
   function salvarAndamento() { if (V && V.reg.frota) Store.set('andamento', { reg: V.reg, salvo: isoLocal() }); }
 
+  function avisoLocalizacao(depois) {
+    limpar();
+    app.appendChild(el('div', { class: 'tela setup' },
+      el('div', { class: 'marca' }, el('span', { class: 'tag' }, 'Aviso'), el('h1', null, 'Localização na vistoria')),
+      el('p', null, 'Durante a vistoria, o aplicativo registra a localização do aparelho em três momentos: no início, ao começar o checklist e na conclusão. Isso confirma que a vistoria foi feita junto ao veículo.'),
+      el('p', null, 'A localização não é acompanhada fora da vistoria e é usada somente para a auditoria interna da manutenção.'),
+      el('p', { class: 'dica' }, 'Se você não permitir a localização, a vistoria funciona normalmente e a recusa fica registrada.'),
+      btn('Entendi', 'pri grande', function () { Store.set('aviso_localizacao', isoLocal()); depois(); })));
+  }
+
   function iniciarVistoria() {
+    if (CFG.localizacao && !Store.get('aviso_localizacao', null)) { avisoLocalizacao(iniciarVistoria); return; }
     V = { reg: novoRegistro(), idx: 0, t: null, mono0: mono(), tentFrota: 0 };
+    Geo.iniciar(V.reg);
     manterTelaLigada(true);
     montarConversa();
     var g = saudacao() + ', ' + primeiroNome(V.reg.motorista) + '. Vamos iniciar a vistoria do veículo.';
@@ -527,10 +671,13 @@
   function identificarVeiculo(num) {
     var cad = Store.get('cadastro', null);
     V.reg.frota = num;
+    V.reg.alertas = (V.reg.alertas || []).filter(function (x) { return x.tipo !== 'frota_repetida_dia'; });
+    var rep = vistoriaHojeDaFrota(num), fila = false;
+    if (rep) { alertar('frota_repetida_dia', { vistoria_anterior: rep.id, hora_anterior: rep.hora_inicio }); appDiz(textoDasChaves(['frota_repetida']), ['frota_repetida']); fila = true; }
     if (cad && Object.keys(cad).length) {
       var v = cad[chaveFrota(num)];
       if (!v) {
-        appDiz('Não localizei a frota ' + num + ' no cadastro de veículos.', ['frota_nao_localizada']);
+        appDiz('Não localizei a frota ' + num + ' no cadastro de veículos.', ['frota_nao_localizada'], fila);
         ultimoRender = function () {
           setPrompt('O que deseja fazer?');
           acoes(btn('Informar a frota novamente', 'pri', function () { V.reg.frota = null; pedirFrota(true); }),
@@ -545,11 +692,11 @@
       [['Frota', num], ['Marca', v.marca], ['Modelo', v.modelo], ['Tipo', v.tipo], ['Ano', v.ano], ['Centro de coletas', v.centro]]
         .forEach(function (p) { if (p[1]) t.appendChild(el('tr', null, el('td', null, p[0]), el('td', null, p[1]))); });
       cartao('', 'Veículo identificado', null, t);
-      appDiz('Confira os dados do veículo. Se não for este, toque em Corrigir.', ['veiculo_confira']);
+      appDiz('Confira os dados do veículo. Se não for este, toque em Corrigir.', ['veiculo_confira'], fila);
       prontoParaChecklist(true);
     } else {
       cartao('', 'Frota', num, el('p', { class: 'c-nota' }, 'Cadastro de veículos não carregado neste aparelho.'));
-      appDiz('Frota ' + num + ' registrada.', ['frota_registrada']);
+      appDiz('Frota ' + num + ' registrada.', ['frota_registrada'], fila);
       prontoParaChecklist(false);
     }
   }
@@ -560,6 +707,7 @@
     ultimoRender = function () {
       setPrompt('Vá até o veículo. Toque para começar o checklist.');
       acoes(btn('Iniciar checklist', 'pri grande', function () {
+        Geo.marcar(V.reg, 'checklist');
         perguntarItem(0, true);
       }), comCorrigir ? btn('Corrigir frota', 'sec', function () { V.reg.veiculo = null; V.reg.frota = null; pedirFrota(true); }) : null);
     };
@@ -629,13 +777,21 @@
   function confirmarNumero(it, n, sinal, txt) {
     var un = it.unidade ? ' ' + it.unidade : '';
     motDiz(sinal === 'voz' ? '“' + txt + '”' : fmtMilhar(n) + un);
-    appDiz(textoDasChaves(['km_confira']), ['km_confira']);
+    // validação cruzada: KM menor que o da última vistoria desta frota
+    var ant = it.id === 'quilometragem' ? ultimoKmDaFrota(V.reg.frota) : null, menor = !!(ant && n < ant.km);
+    var chave = menor ? 'km_menor' : 'km_confira';
+    appDiz(textoDasChaves([chave]), [chave]);
     var o = { texto: String(n), nivel: 'OK', acao: 'SEGUIR' };
-    var ok = function () { motDiz('Sim'); V.reg.quilometragem = n; registrar(it, o, sinal, txt); };
+    var ok = function () {
+      motDiz('Sim'); V.reg.quilometragem = n;
+      V.reg.alertas = (V.reg.alertas || []).filter(function (x) { return x.tipo !== 'km_menor'; });
+      if (menor) alertar('km_menor', { km: n, km_anterior: ant.km, vistoria_anterior: ant.vistoria, data_anterior: ant.data });
+      registrar(it, o, sinal, txt);
+    };
     var corrigir = function () { motDiz('Não'); renderNumero(it); };
     ultimoRender = function () {
-      setPrompt('KM: ' + fmtMilhar(n) + un + '. Está correto?');
-      acoes(el('div', { class: 'visor' }, fmtMilhar(n) + un),
+      setPrompt(menor ? 'Última vistoria desta frota: ' + fmtMilhar(ant.km) + un + ' (' + fmt(ant.data) + ').' : 'KM: ' + fmtMilhar(n) + un + '. Está correto?');
+      acoes(el('div', { class: 'visor' + (menor ? ' alerta' : '') }, fmtMilhar(n) + un),
         linha(btn('Não, corrigir', 'sec', corrigir), btn('Sim, confirmo', 'pri', ok)),
         botaoMic('Responder por voz', function (t) {
           var r = simNao(t);
@@ -762,7 +918,10 @@
     reg.duracao_total_seg = reg.retomada
       ? Math.round((new Date(reg.hora_fim) - new Date(reg.hora_inicio)) / 1000)
       : seg(V.mono0, mono());
-    var hist = Store.get('historico', []); hist.unshift(reg); Store.set('historico', hist);
+    Geo.fechar(reg);
+    var hist = Store.get('historico', []);
+    selar(reg, hist[0]);   // a partir daqui a vistoria não muda; só recebe complementos
+    hist.unshift(reg); Store.set('historico', hist);
     Store.del('andamento');
     Envio.enviar(reg);
     manterTelaLigada(false);
@@ -798,7 +957,7 @@
   function despedir() { appDiz('Checklist finalizado. Lhe desejamos um excelente dia!', ['despedida'], true); }
 
   function sairVistoria() {
-    Fala.parar(); Ouvir.parar();
+    Fala.parar(); Ouvir.parar(); Geo.parar();
     if (!V || V.reg.hora_fim) { telaInicio(); return; }
     var voltar = ultimoRender;
     setPrompt(V.reg.frota ? 'A vistoria fica salva para continuar depois.' : 'A vistoria ainda não começou.');
@@ -810,7 +969,8 @@
     var a = Store.get('andamento', null);
     if (!a) { telaInicio(); return; }
     V = { reg: a.reg, idx: 0, t: null, mono0: mono(), tentFrota: 0 };
-    V.reg.retomada = true;
+    V.reg.retomada = true; V.reg.alertas = V.reg.alertas || [];
+    Geo.iniciar(V.reg);
     manterTelaLigada(true);
     montarConversa();
     appDiz('Retomando a vistoria da frota ' + V.reg.frota + '.', ['retomando']);
@@ -849,7 +1009,10 @@
     [['Motorista', v.motorista], ['Frota', (v.frota || '—') + (v.frota_nao_cadastrada ? ' (fora do cadastro)' : '')],
       ['Veículo', [veic.marca, veic.modelo].filter(Boolean).join(' ') || '—'], ['Centro de coletas', veic.centro || '—'],
       ['Início', fmt(v.hora_inicio)], ['Fim', fmt(v.hora_fim)], ['Duração total', fmtDur(v.duracao_total_seg)],
-      ['Encerramento', infoEncerramento(v) ? infoEncerramento(v).detalhe : 'Normal'], ['Aparelho', v.dispositivo]]
+      ['Encerramento', infoEncerramento(v) ? infoEncerramento(v).detalhe : 'Normal'], ['Aparelho', v.dispositivo],
+      ['Localização', !v.localizacao ? '—' : v.localizacao.status === 'ok' ? ['inicio', 'checklist', 'fim'].map(function (m) { return m + ': ' + (fmtPonto(v.localizacao.pontos[m]) || '—'); }).join(' · ') : v.localizacao.status],
+      ['Alertas', (v.alertas || []).length ? v.alertas.map(descreverAlerta).join('; ') : '—'],
+      ['Lacre', { ok: 'Íntegra ✓ ' + v.integridade.hash.slice(0, 12) + '…', alterado: '⚠ REGISTRO ALTERADO APÓS A CONCLUSÃO', sem_lacre: 'Sem lacre (versão anterior do app)' }[verificarLacre(v)] || '—']]
       .forEach(function (p) { resumo.appendChild(el('tr', null, el('td', null, p[0]), el('td', null, p[1]))); });
     var tab = el('table', { class: 'resp' }, el('thead', null, el('tr', null, el('th', null, 'Item'), el('th', null, 'Resposta'),
       el('th', null, 'Inspeção'), el('th', null, 'Via'))));
@@ -865,16 +1028,31 @@
       el('div', { class: 'corpo' },
         el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Resultado'), el('span', { class: 'selo ' + st[0] }, st[1]), resumo),
         v.relato_livre ? el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Relato livre'), el('div', null, v.relato_livre)) : null,
+        painelComplementos(v),
         el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Respostas e janela de inspeção'), el('div', { class: 'tabela-wrap' }, tab),
           el('p', { class: 'dica' }, 'Janela de inspeção = tempo entre o app anunciar o item e o primeiro toque do motorista. Registrada para análise (sem limite nesta fase).')),
         btn('Exportar esta vistoria (CSV)', 'sec', function () { exportarCSV([v], 'vistoria_' + v.id); }))));
+  }
+
+  // A vistoria concluída não é editável: observações posteriores entram como complemento, com data e lacre próprios
+  function painelComplementos(v) {
+    var lista = (v.complementos || []).map(function (c) { return el('div', { class: 'compl' }, el('div', { class: 'dica' }, fmt(c.em) + ' · ' + c.autor), el('div', null, c.texto)); });
+    var area = el('textarea', { id: 'compl', rows: '3', placeholder: 'Observação posterior (não altera a vistoria)…' });
+    return el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Complementos'),
+      lista.length ? lista : el('div', { class: 'dica' }, 'A vistoria concluída não pode ser alterada. Para acrescentar uma informação, use um complemento.'),
+      v.integridade ? area : null,
+      v.integridade ? btn('Adicionar complemento', 'sec', function () {
+        var t = area.value.trim(); if (!t) { toast('Escreva o complemento.'); return; }
+        if (adicionarComplemento(v.id, t)) { toast('Complemento registrado.'); telaDetalhe(v.id); }
+      }) : null);
   }
 
   /* ---------------- exportação ---------------- */
   var COLS = ['vistoria_id', 'motorista', 'frota', 'quilometragem', 'frota_fora_cadastro', 'marca', 'modelo', 'tipo', 'centro_coletas', 'hora_inicio', 'hora_fim',
     'duracao_total_seg', 'tipo_encerramento', 'motivo_encerramento', 'retomada', 'dispositivo', 'versao_checklist', 'versao_app', 'item_ordem', 'item_id', 'item',
     'pergunta', 'resposta', 'nivel', 'acao', 'sinal', 'transcricao', 'tentativas_voz', 't_anuncio', 't_prontidao', 't_resposta',
-    'duracao_inspecao_seg', 'duracao_resposta_seg', 'relato_livre'];
+    'duracao_inspecao_seg', 'duracao_resposta_seg', 'relato_livre', 'loc_status', 'loc_inicio', 'loc_checklist', 'loc_fim',
+    'alertas', 'lacre', 'lacre_anterior', 'lacre_verificacao', 'complementos'];
   function gerarCSV(lista) {
     var esc = function (v) {
       if (v == null) return '';
@@ -888,7 +1066,12 @@
       var base = { vistoria_id: v.id, motorista: v.motorista, frota: v.frota, quilometragem: v.quilometragem || '', frota_fora_cadastro: v.frota_nao_cadastrada ? 'sim' : '',
         marca: ve.marca, modelo: ve.modelo, tipo: ve.tipo, centro_coletas: ve.centro, hora_inicio: v.hora_inicio, hora_fim: v.hora_fim,
         duracao_total_seg: v.duracao_total_seg, tipo_encerramento: v.tipo_encerramento, motivo_encerramento: v.motivo_encerramento || '', retomada: v.retomada ? 'sim' : '',
-        dispositivo: v.dispositivo, versao_checklist: v.versao_checklist, versao_app: v.versao_app, relato_livre: v.relato_livre };
+        dispositivo: v.dispositivo, versao_checklist: v.versao_checklist, versao_app: v.versao_app, relato_livre: v.relato_livre,
+        loc_status: v.localizacao ? v.localizacao.status : '', loc_inicio: v.localizacao ? fmtPonto(v.localizacao.pontos.inicio) : '',
+        loc_checklist: v.localizacao ? fmtPonto(v.localizacao.pontos.checklist) : '', loc_fim: v.localizacao ? fmtPonto(v.localizacao.pontos.fim) : '',
+        alertas: (v.alertas || []).map(descreverAlerta).join(' | '), lacre: v.integridade ? v.integridade.hash : '',
+        lacre_anterior: v.integridade ? v.integridade.hash_anterior || '' : '', lacre_verificacao: verificarLacre(v),
+        complementos: (v.complementos || []).map(function (c) { return c.em + ' ' + c.autor + ': ' + c.texto; }).join(' | ') };
       (v.respostas.length ? v.respostas : [{}]).forEach(function (r) {
         var row = Object.assign({}, base, { item_ordem: r.ordem, item_id: r.item_id, item: r.rotulo, pergunta: r.pergunta, resposta: r.resposta,
           nivel: r.nivel, acao: r.acao, sinal: r.sinal, transcricao: r.transcricao, tentativas_voz: r.tentativas_voz, t_anuncio: r.t_anuncio,
@@ -980,7 +1163,7 @@
           el('label', { class: 'check', for: 'cfg-conf' }, conf, el('span', null, 'Pedir confirmação também nas respostas por toque. (Respostas por voz sempre pedem confirmação.)'))),
         el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Dados'),
           btn('Exportar todas as vistorias (CSV)', 'sec', function () { var h = Store.get('historico', []); if (!h.length) { toast('Nenhuma vistoria registrada.'); return; } exportarCSV(h); }),
-          apagar),
+          MODO_TESTE ? apagar : el('p', { class: 'dica' }, 'Vistorias concluídas são lacradas e não podem ser apagadas no uso normal.')),
         el('p', { class: 'dica' }, 'Versão do app ' + VERSAO_APP + ' · checklist ' + C.versao + ' · ' + C.itens.length + ' itens'))));
   }
 
@@ -991,6 +1174,6 @@
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   }
   // Ganchos para testes automatizados
-  window.__vv = { Clips: Clips, Player: Player, gerarCSV: gerarCSV, importarCadastro: importarCadastro, casarOpcao: casarOpcao, paraDigitos: paraDigitos, simNao: simNao, paraNumero: paraNumero, temDecimal: temDecimal };
+  window.__vv = { Clips: Clips, Player: Player, gerarCSV: gerarCSV, importarCadastro: importarCadastro, casarOpcao: casarOpcao, paraDigitos: paraDigitos, simNao: simNao, paraNumero: paraNumero, temDecimal: temDecimal, sha256: sha256, verificarLacre: verificarLacre, CFG: CFG };
   telaInicio();
 })();
