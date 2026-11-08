@@ -109,6 +109,9 @@
     { id: 'kit_emergencia', rotulo: 'Kit de emergência', pergunta: 'O kit de emergência está completo, lacrado e em boas condições?', opcoes: sn('APOIO_COLETAS') },
     { id: 'palhetas', rotulo: 'Palhetas do para-brisa', pergunta: 'As palhetas do para-brisa estão funcionando e em bom estado?', opcoes: sn('REPARO_RECOMENDADO', 'LEVE') },
     { id: 'luz_painel', rotulo: 'Luz de falha no painel', pergunta: 'Existe alguma luz de falha acesa no painel?', opcoes: snInv('CONTATO_CENTRAL') },
+    // Pergunta de número: teclado numérico, só aceita valor maior que zero
+    { id: 'quilometragem', rotulo: 'Quilometragem', pergunta: 'Qual a quilometragem atual do veículo?',
+      tipo: 'numero', unidade: 'km', maxDigitos: 6, opcoes: [] },  // máximo 999.999 km, só inteiros
     { id: 'bomba_oluc', rotulo: 'Bomba de OLUC', pergunta: 'A bomba de OLUC está acionando?', opcoes: sn('CONTATO_CENTRAL') },
     { id: 'vazamento_ar', rotulo: 'Vazamento de ar', pergunta: 'O veículo apresenta vazamento de ar, baixa do balão ou perda de pressão?', opcoes: snInv('CONTATO_CENTRAL') },
     { id: 'relato_livre', rotulo: 'Relato livre', pergunta: 'Gostaria de relatar alguma condição de manutenção, conservação ou dirigibilidade não descrita?',
@@ -119,7 +122,7 @@
   ];
   itens.forEach(function (it, i) { it.ordem = i + 1; });
 
-  window.CHECKLIST = { versao: 'diario-v2', itens: itens };
+  window.CHECKLIST = { versao: 'diario-v3', itens: itens };
 
   // Ações: o que o app faz com cada resposta.
   // prioridade ordena o resumo final (menor = mais urgente).

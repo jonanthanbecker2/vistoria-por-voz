@@ -32,6 +32,8 @@
     nao_entendi: 'Não entendi. Pode falar de novo, ou tocar na resposta.',
     encerrar_motor: 'Atenção! Não ligue o veículo: há risco de danificar o motor. Entre em contato com a central agora. A vistoria foi encerrada e salva.',
     encerrar_risco: 'Risco de operação! Não utilize o equipamento e entre em contato com a Central de Atendimento. A vistoria foi encerrada e salva.',
+    km_confira: 'Confira o número do KM na tela. Está correto?',
+    km_zero: 'A quilometragem precisa ser maior que zero.',
     relato_pedir: 'Pode relatar. Fale ou escreva o que você observou, e toque em concluir.',
     relato_ok: 'Relato registrado.',
     resultado_ok: 'Nenhuma não conformidade encontrada. Bom trabalho!',
@@ -60,7 +62,7 @@
     var f = {};
     Object.keys(FIXAS).forEach(function (k) { f[k] = FIXAS[k]; });
     checklist.itens.forEach(function (it) {
-      f['item_' + it.id] = ehSimNao(it) ? it.pergunta : it.pergunta + ' ' + opcoesFaladas(it);
+      f['item_' + it.id] = (ehSimNao(it) || !it.opcoes.length) ? it.pergunta : it.pergunta + ' ' + opcoesFaladas(it);
       f['rot_' + it.id] = it.rotulo + '.';
       it.opcoes.forEach(function (o, i) {
         if (!/^(sim|não)$/i.test(o.texto)) f['conf_' + it.id + '_' + i] = 'Entendi: ' + minuscula(o.texto) + '. Confirma?';

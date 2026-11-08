@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.4.0';
+  var VERSAO_APP = '0.5.1';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   var CFG = { centralConectada: false };
   var app = document.getElementById('app');
@@ -275,6 +275,36 @@
     return (n.match(/\d/g) || []).join('');
   }
 
+  var NUM_PT = { zero: 0, um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, meia: 6, sete: 7, oito: 8, nove: 9,
+    dez: 10, onze: 11, doze: 12, treze: 13, catorze: 14, quatorze: 14, quinze: 15, dezesseis: 16, dezessete: 17, dezoito: 18, dezenove: 19,
+    vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50, sessenta: 60, setenta: 70, oitenta: 80, noventa: 90,
+    cem: 100, cento: 100, duzentos: 200, duzentas: 200, trezentos: 300, trezentas: 300, quatrocentos: 400, quatrocentas: 400,
+    quinhentos: 500, quinhentas: 500, seiscentos: 600, seiscentas: 600, setecentos: 700, setecentas: 700,
+    oitocentos: 800, oitocentas: 800, novecentos: 900, novecentas: 900 };
+  // Lê um número dito ou ditado. Devolve inteiro, ou null se não houver número.
+  // Fala com casas decimais ("125,5", "125 vírgula 5", "e meio")
+  function temDecimal(s) {
+    var t = String(s || '');
+    return /\d,\d/.test(t) || /\d\.\d{1,2}(?!\d)/.test(t) || /\b(virgula|meio)\b/.test(norm(t));
+  }
+  function paraNumero(s) {
+    var t = norm(String(s).replace(/(\d)[.\s](?=\d{3}\b)/g, '$1')).replace(/km|quilometros?|quilometragem/g, ' ');
+    var palavras = t.split(/\s+/).filter(Boolean), total = 0, grupo = 0, achou = false;
+    // ditado dígito a dígito ("um dois cinco quatro três zero"): emenda os dígitos
+    var soDig = palavras.filter(function (w) { return w !== 'e'; });
+    if (soDig.length > 1 && soDig.every(function (w) { return /^\d$/.test(w) || (NUM_PT[w] != null && NUM_PT[w] < 10); }))
+      return parseInt(soDig.map(function (w) { return /^\d$/.test(w) ? w : String(NUM_PT[w]); }).join(''), 10);
+    for (var i = 0; i < palavras.length; i++) {
+      var w = palavras[i];
+      if (/^\d+$/.test(w)) { grupo += parseInt(w, 10); achou = true; }
+      else if (NUM_PT[w] != null) { grupo += NUM_PT[w]; achou = true; }
+      else if (w === 'mil') { total += (grupo || 1) * 1000; grupo = 0; achou = true; }
+      else if (w === 'milhao' || w === 'milhoes') { total += (grupo || 1) * 1000000; grupo = 0; achou = true; }
+    }
+    return achou ? total + grupo : null;
+  }
+  function fmtMilhar(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+
   /* ---------------- tela ligada durante a vistoria ---------------- */
   var wake = null;
   function manterTelaLigada(on) {
@@ -539,7 +569,63 @@
     if (comAbertura) balao('app', textoDasChaves(['inicio_checklist']));
     cartao('item', it.rotulo, it.pergunta);
     Fala.dizer(comAbertura ? ['inicio_checklist', 'item_' + it.id] : ['item_' + it.id]);
-    renderOpcoes(it);
+    if (it.tipo === 'numero') renderNumero(it); else renderOpcoes(it);
+  }
+  // Pergunta de número (quilometragem): teclado numérico ou voz; só aceita valor maior que zero; sempre confirma.
+  function renderNumero(it, inicial) {
+    var dig = inicial || '', max = it.maxDigitos || 7, un = it.unidade ? ' ' + it.unidade : '';
+    var visor = el('div', { class: 'visor vazio', 'aria-live': 'polite' }, '—');
+    var atual = function () { visor.textContent = dig ? fmtMilhar(dig) + un : '—'; visor.classList.toggle('vazio', !dig); };
+    var zero = function () { setPrompt(textoDasChaves(['km_zero'])); Fala.dizer(['km_zero']); };
+    var tecla = function (d) { return btn(d, '', function () {
+      marcarProntidao();
+      if (!dig && d === '0') return;            // não começa com zero
+      if (dig.length < max) { dig += d; atual(); }
+    }); };
+    var enviar = function (valor, sinal, txt) {
+      var n = parseInt(valor, 10);
+      if (!n || n <= 0) { zero(); return; }
+      if (String(n).length > max) { dig = ''; atual(); setPrompt('O máximo é ' + fmtMilhar(Math.pow(10, max) - 1) + un + '. Confira e informe de novo.'); return; }
+      confirmarNumero(it, n, sinal, txt);
+    };
+    var desenhar = function () {
+      atual();
+      var teclado = el('div', { class: 'teclado' },
+        ['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(tecla),
+        btn('⌫', '', function () { dig = dig.slice(0, -1); atual(); }, { 'aria-label': 'Apagar' }),
+        tecla('0'),
+        btn('OK', 'ok', function () { marcarProntidao(); if (!dig) { setPrompt('Digite a quilometragem.'); return; } enviar(dig, 'toque', ''); }));
+      var mic = botaoMic('Falar a quilometragem', function (txt) {
+        V.t.tentativas_voz++;
+        if (temDecimal(txt)) { setPrompt('Informe somente números inteiros, sem vírgula.'); return; }
+        var n = paraNumero(txt);
+        if (n == null) { setPrompt('Não identifiquei um número em "' + txt + '". Fale de novo ou digite.'); return; }
+        dig = String(n); atual(); enviar(dig, 'voz', txt);
+      }, { antes: marcarProntidao });
+      setPrompt(Ouvir.disponivel ? 'Digite no teclado ou fale o número.' : 'Digite a quilometragem.');
+      var extra = linha(btn('↺ Repetir', 'sec peq', function () { Fala.dizer(['item_' + it.id]); }),
+        V.idx > 0 ? btn('← Item anterior', 'sec peq', voltarItem) : null);
+      acoes(visor, teclado, mic, extra);
+    };
+    ultimoRender = desenhar; desenhar();
+  }
+  function confirmarNumero(it, n, sinal, txt) {
+    var un = it.unidade ? ' ' + it.unidade : '';
+    motDiz(sinal === 'voz' ? '“' + txt + '”' : fmtMilhar(n) + un);
+    appDiz(textoDasChaves(['km_confira']), ['km_confira']);
+    var o = { texto: String(n), nivel: 'OK', acao: 'SEGUIR' };
+    var ok = function () { motDiz('Sim'); V.reg.quilometragem = n; registrar(it, o, sinal, txt); };
+    var corrigir = function () { motDiz('Não'); renderNumero(it); };
+    ultimoRender = function () {
+      setPrompt('KM: ' + fmtMilhar(n) + un + '. Está correto?');
+      acoes(el('div', { class: 'visor' }, fmtMilhar(n) + un),
+        linha(btn('Não, corrigir', 'sec', corrigir), btn('Sim, confirmo', 'pri', ok)),
+        botaoMic('Responder por voz', function (t) {
+          var r = simNao(t);
+          if (r === 'sim') ok(); else if (r === 'nao') corrigir(); else setPrompt('Diga sim ou não, ou toque.');
+        }));
+    };
+    ultimoRender();
   }
   // Prontidão: primeiro toque do motorista no item (opção ou microfone). Fecha a janela de inspeção.
   function marcarProntidao() { if (V.t && V.t.m_prontidao == null) { V.t.m_prontidao = mono(); V.t.t_prontidao = isoLocal(); } }
@@ -607,6 +693,7 @@
   function voltarItem() {
     if (!V.reg.respostas.length) return;
     var ult = V.reg.respostas.pop();
+    if (ult.item_id === 'quilometragem') delete V.reg.quilometragem;
     V.reg.pendencias = V.reg.pendencias.filter(function (p) { return p.item_id !== ult.item_id; });
     sistema('Voltando ao item anterior.');
     salvarAndamento();
@@ -767,7 +854,7 @@
   }
 
   /* ---------------- exportação ---------------- */
-  var COLS = ['vistoria_id', 'motorista', 'frota', 'frota_fora_cadastro', 'marca', 'modelo', 'tipo', 'centro_coletas', 'hora_inicio', 'hora_fim',
+  var COLS = ['vistoria_id', 'motorista', 'frota', 'quilometragem', 'frota_fora_cadastro', 'marca', 'modelo', 'tipo', 'centro_coletas', 'hora_inicio', 'hora_fim',
     'duracao_total_seg', 'tipo_encerramento', 'motivo_encerramento', 'retomada', 'dispositivo', 'versao_checklist', 'versao_app', 'item_ordem', 'item_id', 'item',
     'pergunta', 'resposta', 'nivel', 'acao', 'sinal', 'transcricao', 'tentativas_voz', 't_anuncio', 't_prontidao', 't_resposta',
     'duracao_inspecao_seg', 'duracao_resposta_seg', 'relato_livre'];
@@ -781,7 +868,7 @@
     var linhas = [COLS.join(';')];
     lista.forEach(function (v) {
       var ve = v.veiculo || {};
-      var base = { vistoria_id: v.id, motorista: v.motorista, frota: v.frota, frota_fora_cadastro: v.frota_nao_cadastrada ? 'sim' : '',
+      var base = { vistoria_id: v.id, motorista: v.motorista, frota: v.frota, quilometragem: v.quilometragem || '', frota_fora_cadastro: v.frota_nao_cadastrada ? 'sim' : '',
         marca: ve.marca, modelo: ve.modelo, tipo: ve.tipo, centro_coletas: ve.centro, hora_inicio: v.hora_inicio, hora_fim: v.hora_fim,
         duracao_total_seg: v.duracao_total_seg, tipo_encerramento: v.tipo_encerramento, motivo_encerramento: v.motivo_encerramento || '', retomada: v.retomada ? 'sim' : '',
         dispositivo: v.dispositivo, versao_checklist: v.versao_checklist, versao_app: v.versao_app, relato_livre: v.relato_livre };
@@ -887,6 +974,6 @@
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   }
   // Ganchos para testes automatizados
-  window.__vv = { Clips: Clips, Player: Player, gerarCSV: gerarCSV, importarCadastro: importarCadastro, casarOpcao: casarOpcao, paraDigitos: paraDigitos, simNao: simNao };
+  window.__vv = { Clips: Clips, Player: Player, gerarCSV: gerarCSV, importarCadastro: importarCadastro, casarOpcao: casarOpcao, paraDigitos: paraDigitos, simNao: simNao, paraNumero: paraNumero, temDecimal: temDecimal };
   telaInicio();
 })();

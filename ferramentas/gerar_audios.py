@@ -24,7 +24,7 @@ VOZES_AMOSTRA = ['pt-BR-FranciscaNeural', 'pt-BR-ThalitaMultilingualNeural', 'pt
 FRASE_AMOSTRA = ['saud_manha', 'item_oleo_motor', 'conf_oleo_motor_1', 'acao_CONTATO_CENTRAL']
 
 # Só muda o som, não o texto da tela: siglas lidas do jeito que se fala no pátio
-PRONUNCIA = {'OLUC': 'Óluc'}
+PRONUNCIA = {'OLUC': 'Óluc', ' KM ': ' ká éme '}
 
 
 def para_fala(texto):
