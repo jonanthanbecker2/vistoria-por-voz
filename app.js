@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.6.0';
+  var VERSAO_APP = '0.6.1';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   var CFG = { centralConectada: false };
   var app = document.getElementById('app');
@@ -423,15 +423,21 @@
     UI.log = el('main', { class: 'log', id: 'log' });
     UI.prompt = el('div', { class: 'prompt', 'aria-live': 'polite' });
     UI.acoes = el('div', { class: 'acoes' });
+    UI.rodape = el('footer', { class: 'rodape' }, UI.prompt, UI.acoes);
+    // A conversa acompanha sempre a última mensagem, inclusive quando o rodapé muda de altura
+    // (ex.: teclado da quilometragem). Se o motorista rolar para cima para reler, não puxa de volta.
+    UI.colado = true;
+    UI.log.addEventListener('scroll', function () { UI.colado = UI.log.scrollHeight - UI.log.clientHeight - UI.log.scrollTop < 40; }, { passive: true });
+    if ('ResizeObserver' in window) new ResizeObserver(function () { if (UI.colado) UI.log.scrollTop = UI.log.scrollHeight; }).observe(UI.log);
     app.appendChild(el('div', { class: 'tela conversa' },
       el('header', { class: 'topo' },
         el('button', { class: 'btn-topo', type: 'button', onclick: sairVistoria }, 'Sair'),
         el('div', { class: 'h-txt' }, el('span', { class: 'h-t' }, 'Vistoria'), UI.sub), UI.chip),
       el('div', { class: 'prog' }, UI.prog), UI.log,
-      el('footer', { class: 'rodape' }, UI.prompt, UI.acoes)));
+      UI.rodape));
     atualizarChipVoz();
   }
-  function rolar() { requestAnimationFrame(function () { UI.log.scrollTop = UI.log.scrollHeight; }); }
+  function rolar() { UI.colado = true; requestAnimationFrame(function () { UI.log.scrollTop = UI.log.scrollHeight; }); }
   function balao(cls, txt) { var b = el('div', { class: 'balao ' + cls }, txt); UI.log.appendChild(b); rolar(); return b; }
   // Com chaves do roteiro, o balão mostra exatamente o texto falado (a tela nunca difere da voz)
   function textoDasChaves(chaves) { var F = window.FALAS || {}; return (chaves || []).map(function (k) { return F[k] || ''; }).join(' ').trim(); }
@@ -451,6 +457,9 @@
   function acoes() {
     var nodes = Array.prototype.slice.call(arguments).filter(Boolean);
     UI.acoes.replaceChildren.apply(UI.acoes, nodes);
+    // rodapé compacto quando há teclado numérico (frota, quilometragem)
+    if (UI.rodape) UI.rodape.classList.toggle('compacto', nodes.some(function (n) { return n.classList && n.classList.contains('teclado'); }));
+    if (UI.colado) rolar();
   }
   function redesenharAcoes() { if (ultimoRender) ultimoRender(); }
 

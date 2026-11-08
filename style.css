@@ -43,7 +43,11 @@ body.ouvindo .chip-voz { color: var(--acento-tinta); background: var(--acento); 
 .prog-barra { height: 100%; background: var(--acento); width: 0; transition: width .3s ease; }
 
 /* conversa */
-.log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.log { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px; display: flex; flex-direction: column; gap: 10px;
+  scrollbar-width: thin; scrollbar-color: var(--linha) transparent; }
+.log::-webkit-scrollbar { width: 6px; }
+.log::-webkit-scrollbar-thumb { background: var(--linha); border-radius: 3px; }
+.log::-webkit-scrollbar-track { background: transparent; }
 .balao { max-width: 86%; padding: 11px 14px; border-radius: 16px; }
 .balao.app { align-self: flex-start; background: var(--app-b); border-bottom-left-radius: 5px; }
 .balao.mot { align-self: flex-end; background: var(--mot-b); color: var(--mot-tinta); border-bottom-right-radius: 5px; font-weight: 600; }
@@ -100,6 +104,23 @@ body.ouvindo .btn.mic { background: var(--acento); color: var(--acento-tinta); a
 .teclado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .teclado .btn { font: 600 24px var(--mono); min-height: 56px; padding: 8px; }
 .teclado .btn.ok { background: var(--ok); color: #fff; font-family: var(--fonte); font-size: 19px; }
+
+/* rodapé com teclado numérico: mais baixo, para a pergunta continuar visível */
+.rodape.compacto { padding-top: 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); gap: 6px; }
+.rodape.compacto .acoes { gap: 8px; }
+.rodape.compacto .visor { min-height: 46px; font-size: 28px; padding: 4px; }
+.rodape.compacto .teclado { gap: 6px; }
+.rodape.compacto .teclado .btn { min-height: 46px; font-size: 22px; padding: 4px; }
+.rodape.compacto .btn.mic { min-height: 46px; padding: 8px 12px; }
+.rodape.compacto .btn.peq { min-height: 40px; }
+/* telas baixas (celular pequeno, notebook): botões um pouco menores */
+@media (max-height: 720px) {
+  .rodape { gap: 8px; padding-top: 10px; }
+  .btn { min-height: 50px; padding: 10px 14px; }
+  .btn.grande { min-height: 56px; }
+  .op { min-height: 52px; padding: 10px 14px; }
+  .rodape.compacto .teclado .btn, .rodape.compacto .visor, .rodape.compacto .btn.mic { min-height: 42px; }
+}
 
 textarea { width: 100%; font: 17px var(--fonte); padding: 12px; border-radius: 12px; border: 1px solid var(--linha);
   background: var(--sup); color: var(--tinta); resize: vertical; }
