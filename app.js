@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.6.1';
+  var VERSAO_APP = '0.6.2';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   var CFG = { centralConectada: false };
   var app = document.getElementById('app');

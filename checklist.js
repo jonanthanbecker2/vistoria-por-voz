@@ -93,6 +93,12 @@
           chaves: ['solto', 'soltos', 'faltando', 'falta', 'frouxo', 'sem parafuso'] }
       ] },
     { id: 'calcos', rotulo: 'Calços de roda', pergunta: 'O veículo possui calços de roda em boas condições?', opcoes: sn('APOIO_COLETAS') },
+    { id: 'escada_tanque', rotulo: 'Escada de acesso ao tanque', pergunta: 'A escada de acesso ao tanque está em boas condições de uso?',
+      opcoes: [
+        { texto: 'Boas condições', nivel: 'OK', acao: 'SEGUIR', chaves: ['boa', 'boas', 'bom', 'otima', 'normal', 'ok', 'tudo certo', 'firme', 'sim'] },
+        { texto: 'Desgaste, mas segura para uso', nivel: 'LEVE', acao: 'REPARO_RECOMENDADO', chaves: ['desgaste', 'gasta', 'gasto', 'segura', 'da pra usar', 'aceitavel', 'mais ou menos'] },
+        { texto: 'Sem condições de uso', nivel: 'GRAVE', acao: 'CONTATO_CENTRAL', chaves: ['sem condicoes', 'quebrada', 'quebrado', 'solta', 'perigosa', 'nao da', 'ruim', 'danificada', 'torta'] }
+      ] },
     { id: 'cones', rotulo: 'Cones', pergunta: 'O veículo possui a quantidade de cones necessária, em boas condições?', opcoes: sn('APOIO_COLETAS') },
     { id: 'carrinho_tambor', rotulo: 'Carrinho auxiliar', pergunta: 'O veículo possui o carrinho auxiliar para movimentação de tambor?', opcoes: sn('APOIO_COLETAS') },
     { id: 'extintores', rotulo: 'Extintores', pergunta: 'Os extintores estão conservados e dentro da validade?', opcoes: sn('APOIO_COLETAS') },
@@ -102,6 +108,7 @@
         { texto: 'Desgaste, mas padrão aceitável', nivel: 'LEVE', acao: 'SO_REGISTRA', chaves: ['desgaste', 'gasto', 'aceitavel', 'razoavel', 'mais ou menos'] },
         { texto: 'Não está em boas condições', nivel: 'LEVE', acao: 'REPARO_RECOMENDADO', chaves: ['ruim', 'nao esta', 'mal', 'feio', 'precisa', 'sujo', 'amassado', 'danificado'] }
       ] },
+    { id: 'portas', rotulo: 'Portas', pergunta: 'As portas do veículo estão abrindo, fechando e travando normalmente?', opcoes: sn('CONTATO_CENTRAL') },
     { id: 'cinto', rotulo: 'Cinto de segurança', pergunta: 'O cinto de segurança está em boas condições de uso?', opcoes: sn('NAO_UTILIZAR') },
     { id: 'buzina', rotulo: 'Buzina', pergunta: 'A buzina está funcionando?', opcoes: sn('CONTATO_CENTRAL') },
     { id: 'tacografo', rotulo: 'Tacógrafo', pergunta: 'O tacógrafo está funcionando e com lacre?', opcoes: sn('CONTATO_CENTRAL') },
@@ -117,6 +124,8 @@
     // Pergunta de número: teclado numérico, só aceita valor maior que zero
     { id: 'quilometragem', rotulo: 'Quilometragem', pergunta: 'Qual a quilometragem atual do veículo?',
       tipo: 'numero', unidade: 'km', maxDigitos: 6, opcoes: [] },  // máximo 999.999 km, só inteiros
+    { id: 'alarme_freio', rotulo: 'Alarme do freio estacionário', pergunta: 'O alarme do freio estacionário está funcionando?', opcoes: sn('REPARO_CENTRAL') },
+    { id: 'vidros_portas', rotulo: 'Vidros das portas', pergunta: 'Os vidros das portas estão abrindo e fechando normalmente?', opcoes: sn('CONTATO_CENTRAL') },
     { id: 'bomba_oluc', rotulo: 'Bomba de OLUC', pergunta: 'A bomba de OLUC está acionando?', opcoes: sn('CONTATO_CENTRAL') },
     { id: 'vazamento_ar', rotulo: 'Vazamento de ar', pergunta: 'O veículo apresenta vazamento de ar, baixa do balão ou perda de pressão?', opcoes: snInv('CONTATO_CENTRAL') },
     { id: 'relato_livre', rotulo: 'Relato livre', pergunta: 'Gostaria de relatar alguma condição de manutenção, conservação ou dirigibilidade não descrita?',
@@ -127,7 +136,7 @@
   ];
   itens.forEach(function (it, i) { it.ordem = i + 1; });
 
-  window.CHECKLIST = { versao: 'diario-v4', itens: itens };
+  window.CHECKLIST = { versao: 'diario-v5', itens: itens };
 
   // Ações: o que o app faz com cada resposta.
   // prioridade ordena o resumo final (menor = mais urgente).

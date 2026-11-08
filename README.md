@@ -21,7 +21,7 @@ Abre no Chrome do celular, instala na tela inicial e funciona sem internet depoi
 
 1. **Primeira abertura:** cadastra o motorista deste aparelho (no app definitivo virá do cadastro da empresa).
 2. **Identificação:** saudação pelo nome → frota por voz ou teclado → confirmação → dados do veículo (se houver cadastro).
-3. **Checklist (26 itens, 1 condicional):** o app anuncia o item e as opções; o motorista confere e responde por toque ou voz.
+3. **Checklist (30 itens, 1 condicional):** o app anuncia o item e as opções; o motorista confere e responde por toque ou voz.
    - Documentos da pasta: só é perguntado se a pasta estiver no veículo. Lista por siglas (CRLV, CIV, CIPP, certificado do tacógrafo, CTF, ATIPP, licenças ambientais). "Não" → centro de coletas.
    - Quilometragem: teclado numérico ou voz, só aceita número inteiro de 1 a 999.999 (até 6 dígitos) e sempre pede confirmação ("Confira o número do KM na tela. Está correto?"). Vai para a coluna `quilometragem` da planilha.
    - Resposta por **voz** sempre pede confirmação (pode haver erro de reconhecimento).
