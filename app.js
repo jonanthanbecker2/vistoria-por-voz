@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.7.0';
+  var VERSAO_APP = '0.8.0';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   // Modo de teste (abrir o app com ?teste=1): libera "apagar vistorias" para treinamento e testes
   try { if (/[?&]teste=1/.test(location.search)) localStorage.setItem('vv_modo_teste', '1'); if (/[?&]teste=0/.test(location.search)) localStorage.removeItem('vv_modo_teste'); } catch (e) {}
@@ -15,7 +15,10 @@
   var CFG = {
     centralConectada: false,
     // Localização no início, no início do checklist e na conclusão (a validar pela empresa / LGPD).
-    localizacao: true
+    localizacao: true,
+    // Servidor central (Supabase, São Paulo). A chave publicável é feita para ficar no app:
+    // a segurança está nas regras do banco (o app só envia vistorias e lê o cadastro).
+    servidor: { url: 'https://udzegivmhhiopudnxes.supabase.co', chave: 'sb_publishable_A6V_SpGYp1MmRIoLYCSNxg_WGdmaSHQ' }
   };
   var app = document.getElementById('app');
 
@@ -324,14 +327,257 @@
     if (document.visibilityState === 'visible' && V && !V.reg.hora_fim) manterTelaLigada(true);
   });
 
-  /* ---------------- envio para a central (camada trocável) ---------------- */
-  var Envio = {
-    modo: 'local', // piloto: dados ficam no aparelho. Próximo passo: 'planilha' ou 'supabase'.
-    enviar: function (reg) {
-      if (this.modo === 'local') return Promise.resolve(false);
-      return Promise.resolve(false);
+  /* ---------------- histórico de vistorias (IndexedDB, com cópia em memória) ---------------- */
+  // As vistorias concluídas ficam no IndexedDB, que comporta muito mais que o localStorage.
+  // A lista é carregada na abertura do app; cada mudança é gravada em seguida.
+  var Hist = {
+    db: null, lista: [],
+    abrir: function () {
+      return new Promise(function (ok) {
+        try {
+          if (!('indexedDB' in window)) { ok(null); return; }
+          var r = indexedDB.open('vistoria-por-voz', 1);
+          r.onupgradeneeded = function () { r.result.createObjectStore('vistorias', { keyPath: 'id' }); };
+          r.onsuccess = function () { ok(r.result); };
+          r.onerror = r.onblocked = function () { ok(null); };
+        } catch (e) { ok(null); }
+      });
+    },
+    // mais recente primeiro (ordem em que foram lacradas)
+    ordenar: function () {
+      var t = function (v) { return Date.parse(v.hora_fim || v.hora_inicio) || 0; };
+      this.lista.sort(function (a, b) { return t(b) - t(a); });
+    },
+    carregar: function () {
+      var self = this, antigo = Store.get('historico', null);   // versões anteriores guardavam no localStorage
+      return this.abrir().then(function (db) {
+        self.db = db;
+        if (!db) { self.lista = antigo || []; self.ordenar(); return; }
+        return new Promise(function (ok) {
+          try {
+            var req = db.transaction('vistorias', 'readonly').objectStore('vistorias').getAll();
+            req.onsuccess = function () { self.lista = req.result || []; ok(); };
+            req.onerror = function () { self.lista = []; ok(); };
+          } catch (e) { self.lista = []; ok(); }
+        }).then(function () {
+          if (!antigo || !antigo.length) return;
+          var ja = {}; self.lista.forEach(function (v) { ja[v.id] = 1; });
+          var novos = antigo.filter(function (v) { return !ja[v.id]; });
+          self.lista = self.lista.concat(novos);
+          return self.gravar(novos).then(function (ok) { if (ok) Store.del('historico'); });   // migração
+        }).then(function () { self.ordenar(); });
+      });
+    },
+    gravar: function (regs) {
+      var self = this;
+      if (!this.db) return Promise.resolve(Store.set('historico', this.lista));
+      return new Promise(function (ok) {
+        try {
+          var tx = self.db.transaction('vistorias', 'readwrite'), st = tx.objectStore('vistorias');
+          regs.forEach(function (v) { st.put(v); });
+          tx.oncomplete = function () { ok(true); };
+          tx.onerror = tx.onabort = function () { ok(false); };
+        } catch (e) { ok(false); }
+      });
+    },
+    todos: function () { return this.lista; },
+    porId: function (id) { return this.lista.filter(function (v) { return v.id === id; })[0] || null; },
+    adicionar: function (reg) { this.lista.unshift(reg); return this.gravar([reg]); },
+    atualizar: function (reg) { return this.gravar([reg]); },
+    remover: function (ids) {
+      var self = this, mapa = {}; ids.forEach(function (i) { mapa[i] = 1; });
+      this.lista = this.lista.filter(function (v) { return !mapa[v.id]; });
+      if (!this.db) return Promise.resolve(Store.set('historico', this.lista));
+      return new Promise(function (ok) {
+        try {
+          var tx = self.db.transaction('vistorias', 'readwrite'), st = tx.objectStore('vistorias');
+          ids.forEach(function (i) { st.delete(i); });
+          tx.oncomplete = function () { ok(true); }; tx.onerror = tx.onabort = function () { ok(false); };
+        } catch (e) { ok(false); }
+      });
+    },
+    // Vistorias que o servidor já confirmou saem do celular depois de 30 dias (a cópia definitiva está no servidor)
+    limpar: function () {
+      var lim = Date.now() - 30 * 864e5;
+      var velhas = this.lista.filter(function (v) {
+        return v.envio && v.envio.status === 'enviada' && !Fila.complementosPendentes(v).length && (Date.parse(v.hora_fim || v.hora_inicio) || 0) < lim;
+      }).map(function (v) { return v.id; });
+      return velhas.length ? this.remover(velhas) : Promise.resolve(true);
+    },
+    apagarTudo: function () { return this.remover(this.lista.map(function (v) { return v.id; })); }
+  };
+
+  /* ---------------- servidor central (Supabase) ---------------- */
+  var Servidor = {
+    ativo: function () { return !!(CFG.servidor && CFG.servidor.url && CFG.servidor.chave) && typeof fetch === 'function'; },
+    req: function (caminho, op) {
+      op = op || {};
+      var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+      var relogio = ctrl ? setTimeout(function () { ctrl.abort(); }, op.tempo || 20000) : null;
+      return fetch(CFG.servidor.url + caminho, {
+        method: op.metodo || 'GET', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined,
+        headers: { apikey: CFG.servidor.chave, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: op.corpo ? JSON.stringify(op.corpo) : undefined
+      }).then(function (r) {
+        if (relogio) clearTimeout(relogio);
+        return r.text().then(function (t) {
+          var j = null; try { j = t ? JSON.parse(t) : null; } catch (e) {}
+          if (!r.ok) {
+            var err = new Error((j && (j.message || j.msg || j.error_description || j.error)) || ('erro ' + r.status));
+            err.status = r.status; err.codigo = j && j.code; throw err;
+          }
+          return j;
+        });
+      }, function () { if (relogio) clearTimeout(relogio); var err = new Error('sem conexão com o servidor'); err.rede = true; throw err; });
+    },
+    // listas longas vêm em páginas de 1.000 linhas
+    paginado: function (caminho, metodo) {
+      var tam = 1000, tudo = [];
+      var pagina = function (desde) {
+        var sep = caminho.indexOf('?') < 0 ? '?' : '&';
+        return Servidor.req(caminho + sep + 'limit=' + tam + '&offset=' + desde, { metodo: metodo || 'GET', corpo: metodo === 'POST' ? {} : null })
+          .then(function (linhas) { linhas = linhas || []; tudo = tudo.concat(linhas); return linhas.length === tam ? pagina(desde + tam) : tudo; });
+      };
+      return pagina(0);
     }
   };
+
+  /* ---------------- fila de envio ---------------- */
+  // Toda vistoria concluída fica na fila até o servidor confirmar. O reenvio não duplica:
+  // o servidor reconhece o número da vistoria e responde "já recebida".
+  var Fila = {
+    rodando: false, ultimoErro: null, ultimaTentativa: null,
+    precisaEnviar: function (v) { return !!v.integridade && !(v.envio && (v.envio.status === 'enviada' || v.envio.status === 'conflito')); },
+    complementosPendentes: function (v) {
+      if (!v.envio || v.envio.status !== 'enviada') return [];
+      var ja = v.envio.complementos || [];
+      return (v.complementos || []).filter(function (c) { return ja.indexOf(c.hash) < 0; });
+    },
+    pendentes: function () { var self = this; return Hist.todos().filter(function (v) { return self.precisaEnviar(v) || self.complementosPendentes(v).length; }); },
+    // o que vai para o servidor é a vistoria lacrada (o estado do envio é só deste aparelho)
+    corpo: function (v) { var c = {}; Object.keys(v).forEach(function (k) { if (k !== 'envio') c[k] = v[k]; }); return c; },
+    processar: function () {
+      var self = this;
+      if (this.rodando || !Servidor.ativo()) return Promise.resolve(false);
+      var fila = this.pendentes().slice().reverse();   // a mais antiga primeiro
+      if (!fila.length) { atualizarStatusEnvio(); return Promise.resolve(true); }
+      this.rodando = true; this.ultimaTentativa = isoLocal();
+      var i = 0;
+      var proxima = function () {
+        if (i >= fila.length) return Promise.resolve();
+        var v = fila[i++];
+        return (self.precisaEnviar(v) ? self.enviarVistoria(v) : self.enviarComplementos(v))
+          .then(proxima, function (e) { if (e && e.rede) throw e; return proxima(); });   // sem sinal: para e tenta depois
+      };
+      return proxima().then(function () { self.ultimoErro = null; return true; }, function (e) { self.ultimoErro = e.message; return false; })
+        .then(function (r) { self.rodando = false; atualizarStatusEnvio(); return r; });
+    },
+    enviarVistoria: function (v) {
+      var anterior = v.envio || {};
+      return Servidor.req('/rest/v1/rpc/receber_vistoria', { metodo: 'POST', corpo: { p: this.corpo(v) } }).then(function (resp) {
+        v.envio = { status: 'enviada', em: isoLocal(), resposta: resp && resp.status, tentativas: (anterior.tentativas || 0) + 1,
+          complementos: (v.complementos || []).map(function (c) { return c.hash; }) };
+        return Hist.atualizar(v);
+      }, function (e) {
+        v.envio = { status: /outro lacre/.test(e.message) ? 'conflito' : 'pendente', tentativas: (anterior.tentativas || 0) + 1,
+          erro: e.message, ultima_tentativa: isoLocal() };
+        return Hist.atualizar(v).then(function () { throw e; });
+      });
+    },
+    enviarComplementos: function (v) {
+      var pend = this.complementosPendentes(v), j = 0;
+      var um = function () {
+        if (j >= pend.length) return Promise.resolve();
+        var c = pend[j++];
+        return Servidor.req('/rest/v1/rpc/receber_complemento', { metodo: 'POST', corpo: { p_vistoria: v.id, c: { hash: c.hash, em: c.em, autor: c.autor, texto: c.texto } } })
+          .then(function () { v.envio.complementos = (v.envio.complementos || []).concat([c.hash]); return Hist.atualizar(v); }).then(um);
+      };
+      return um();
+    }
+  };
+  function textoEnvio() {
+    if (!Servidor.ativo()) return 'salvos neste aparelho';
+    var n = Fila.pendentes().length;
+    if (!n) return Hist.todos().length ? 'tudo enviado' : 'nenhuma vistoria ainda';
+    return n + (n === 1 ? ' vistoria aguardando envio' : ' vistorias aguardando envio');
+  }
+  function atualizarStatusEnvio() {
+    var e = document.getElementById('status-envio'); if (e) e.textContent = textoEnvio();
+    if (V && V.reg && V.reg.hora_fim && V.reg.envio && V.reg.envio.status === 'enviada') setPrompt('Vistoria salva e enviada.');
+  }
+  function rotuloEnvio(v) {
+    if (!Servidor.ativo()) return '';
+    var s = v.envio && v.envio.status;
+    return s === 'enviada' ? 'enviada' : s === 'conflito' ? 'recusada no envio' : 'aguardando envio';
+  }
+  function descricaoEnvio(v) {
+    if (!Servidor.ativo()) return 'Só neste aparelho';
+    var e = v.envio || {};
+    if (e.status === 'enviada') return 'Enviada em ' + fmt(e.em);
+    if (e.status === 'conflito') return 'Recusada pelo servidor: ' + e.erro;
+    return 'Aguardando envio' + (e.tentativas ? ' (' + e.tentativas + ' tentativa(s); ' + e.erro + ')' : '');
+  }
+
+  /* ---------------- sincronização do cadastro (servidor -> celular) ---------------- */
+  var Sinc = {
+    rodando: false, ultima: 0, atual: null,
+    cadastro: function () {
+      var self = this;
+      if (!Servidor.ativo()) return Promise.resolve(null);
+      if (this.rodando) return this.atual;   // já está sincronizando: espera a mesma
+      this.rodando = true;
+      return this.atual = Promise.all([
+        Servidor.paginado('/rest/v1/veiculos?select=frota,marca,modelo,tipo,ano,centro_coletas&order=frota'),
+        Servidor.paginado('/rest/v1/documentos_veiculo?select=frota,documento,vencimento,uf,municipio&order=id'),
+        Servidor.paginado('/rest/v1/rpc/ultimos_por_frota?order=frota', 'POST').catch(function () { return null; })   // script 002
+      ]).then(function (r) {
+        var vs = r[0] || [], ds = r[1] || [], us = r[2];
+        self.ultima = Date.now();
+        if (us) { var m = {}; us.forEach(function (u) { var k = chaveFrota(u.frota); if (k) m[k] = u; }); Store.set('ultimos', { em: isoLocal(), frotas: m }); }
+        if (!vs.length) { Store.set('cadastro_sync', { em: isoLocal(), veiculos: 0, origem: 'servidor_vazio' }); return { veiculos: 0 }; }   // mantém o cadastro do aparelho
+        var cad = {};
+        vs.forEach(function (v) { var k = chaveFrota(v.frota); if (k) cad[k] = { marca: v.marca || '', modelo: v.modelo || '', tipo: v.tipo || '', ano: v.ano || '', centro: v.centro_coletas || '' }; });
+        // documentos: em cada (documento, estado, município) vale o vencimento mais recente (renovação = linha nova);
+        // entre estados ou municípios diferentes, vale o que vence primeiro
+        var grupos = {};
+        ds.forEach(function (d) {
+          var k = chaveFrota(d.frota); if (!cad[k] || !d.vencimento) return;
+          var g = k + '|' + d.documento + '|' + (d.uf || '') + '|' + (d.municipio || '');
+          if (!grupos[g] || d.vencimento > grupos[g].vencimento) grupos[g] = { frota: k, documento: d.documento, vencimento: d.vencimento };
+        });
+        Object.keys(grupos).forEach(function (g) {
+          var d = grupos[g], venc = cad[d.frota].venc = cad[d.frota].venc || {};
+          if (!venc[d.documento] || d.vencimento < venc[d.documento]) venc[d.documento] = d.vencimento;
+        });
+        Store.set('cadastro', cad); Store.set('cadastro_sync', { em: isoLocal(), veiculos: vs.length, origem: 'servidor' });
+        return { veiculos: vs.length };
+      }).catch(function () { return null; }).then(function (r) { self.rodando = false; return r; });
+    },
+    talvez: function () { return Date.now() - this.ultima > 10 * 60000 ? this.cadastro() : Promise.resolve(null); }
+  };
+
+  // Diagnóstico para a tela de Configurações: confere o que o script 001/002 criou no servidor
+  function testarConexao(saida) {
+    var linhas = [], add = function (ok, txt) { linhas.push((ok ? '✓ ' : '✗ ') + txt); saida.textContent = linhas.join('\n'); };
+    saida.textContent = 'Testando…';
+    var tudo = [];
+    return Servidor.req('/rest/v1/veiculos?select=frota&limit=1').then(function () {
+      add(true, 'Conexão com o servidor e tabelas do cadastro');
+    }, function (e) { add(false, e.rede ? 'Sem conexão com o servidor' : 'Tabelas não encontradas — rode o script 001 no Supabase (' + e.message + ')'); throw e; })
+      .then(function () {
+        return Servidor.req('/rest/v1/rpc/receber_vistoria', { metodo: 'POST', corpo: { p: { id: 'TESTE-CONEXAO' } } })
+          .then(function () { add(false, 'Recebimento de vistorias respondeu sem conferir o lacre'); },
+            function (e) { add(/lacre/.test(e.message), /lacre/.test(e.message) ? 'Recebimento de vistorias' : 'Recebimento de vistorias não encontrado — rode o script 001 (' + e.message + ')'); });
+      }).then(function () {
+        return Servidor.req('/rest/v1/vistorias?select=id&limit=1')
+          .then(function () { add(false, 'ATENÇÃO: o app consegue ler as vistorias — revise as regras de acesso'); },
+            function (e) { add(e.status === 401 || e.status === 403 || /permission/.test(e.message), 'Vistorias protegidas (o app não consegue ler)'); });
+      }).then(function () {
+        return Servidor.req('/rest/v1/rpc/ultimos_por_frota?limit=1', { metodo: 'POST', corpo: {} })
+          .then(function () { add(true, 'Último KM por frota (script 002)'); },
+            function (e) { add(false, 'Último KM por frota não encontrado — rode o script 002 (' + e.message + ')'); });
+      }).catch(function () {});
+  }
 
   /* ---------------- componentes ---------------- */
   function btn(txt, cls, fn, attrs) {
@@ -399,7 +645,7 @@
   }
   // Conteúdo lacrado: tudo, menos o próprio lacre e os complementos (que têm lacre próprio)
   function conteudoLacrado(reg) {
-    var c = {}; Object.keys(reg).forEach(function (k) { if (k !== 'integridade' && k !== 'complementos') c[k] = reg[k]; });
+    var c = {}; Object.keys(reg).forEach(function (k) { if (k !== 'integridade' && k !== 'complementos' && k !== 'envio') c[k] = reg[k]; });
     if (reg.integridade) c.integridade = { algoritmo: reg.integridade.algoritmo, hash_anterior: reg.integridade.hash_anterior, selado_em: reg.integridade.selado_em };
     return canonico(c);
   }
@@ -420,14 +666,15 @@
     return 'ok';
   }
   function adicionarComplemento(id, texto) {
-    var hist = Store.get('historico', []), v = hist.filter(function (x) { return x.id === id; })[0];
+    var v = Hist.porId(id);
     if (!v || !v.integridade) return false;
     v.complementos = v.complementos || [];
     var ant = v.complementos.length ? v.complementos[v.complementos.length - 1].hash : v.integridade.hash;
     var c = { texto: texto, em: isoLocal(), autor: Store.get('motorista', '') };
     c.hash = sha256(ant + '|' + c.em + '|' + c.autor + '|' + c.texto);
-    v.complementos.push(c); v.status_envio = v.status_envio === 'enviado' ? 'complemento_pendente' : v.status_envio;
-    Store.set('historico', hist); return true;
+    v.complementos.push(c);
+    Hist.atualizar(v).then(function () { Fila.processar(); });
+    return true;
   }
 
   /* ---------------- localização (só durante a vistoria) ---------------- */
@@ -474,17 +721,27 @@
 
   /* ---------------- validações cruzadas (neste aparelho; no servidor, entre todos) ---------------- */
   function hoje() { return isoLocal().slice(0, 10); }
+  function dataLocal(ts) { var d = new Date(ts); return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); }
+  // Última vistoria e último KM da frota vindos do servidor (todos os celulares), baixados com o cadastro
+  function ultimoNoServidor(frota) { var u = Store.get('ultimos', null); return (u && u.frotas && u.frotas[chaveFrota(frota)]) || null; }
   function vistoriaHojeDaFrota(frota) {
-    return Store.get('historico', []).filter(function (v) { return chaveFrota(v.frota) === chaveFrota(frota) && (v.hora_inicio || '').slice(0, 10) === hoje(); })[0] || null;
+    var local = Hist.todos().filter(function (v) { return chaveFrota(v.frota) === chaveFrota(frota) && (v.hora_inicio || '').slice(0, 10) === hoje(); })[0];
+    if (local) return local;
+    var u = ultimoNoServidor(frota);
+    return u && u.ultima_vistoria_em && dataLocal(u.ultima_vistoria_em) === hoje() ? { id: u.ultima_vistoria_id, hora_inicio: u.ultima_vistoria_em, origem: 'servidor' } : null;
   }
   function ultimoKmDaFrota(frota) {
-    var v = Store.get('historico', []).filter(function (x) { return chaveFrota(x.frota) === chaveFrota(frota) && x.quilometragem; })[0];
-    return v ? { km: v.quilometragem, data: v.hora_inicio, vistoria: v.id } : null;
+    var v = Hist.todos().filter(function (x) { return chaveFrota(x.frota) === chaveFrota(frota) && x.quilometragem; })[0];
+    var local = v ? { km: v.quilometragem, data: v.hora_inicio, vistoria: v.id } : null;
+    var u = ultimoNoServidor(frota), srv = u && u.ultimo_km ? { km: u.ultimo_km, data: u.km_em, vistoria: u.km_vistoria_id, origem: 'servidor' } : null;
+    if (!local) return srv;
+    if (!srv) return local;
+    return Date.parse(srv.data) > Date.parse(local.data) ? srv : local;   // vale a leitura mais recente
   }
   function alertar(tipo, dados) { V.reg.alertas = V.reg.alertas || []; V.reg.alertas.push(Object.assign({ tipo: tipo, em: isoLocal() }, dados || {})); }
   function descreverAlerta(a) {
     if (a.tipo === 'km_menor') return 'KM menor que a última vistoria (' + fmtMilhar(a.km) + ' < ' + fmtMilhar(a.km_anterior) + ')';
-    if (a.tipo === 'frota_repetida_dia') return 'Frota já vistoriada hoje neste aparelho (vistoria ' + a.vistoria_anterior + ')';
+    if (a.tipo === 'frota_repetida_dia') return 'Frota já vistoriada hoje' + (a.origem === 'servidor' ? ', em outro aparelho' : '') + ' (vistoria ' + a.vistoria_anterior + ')';
     return a.tipo;
   }
 
@@ -510,7 +767,9 @@
     var nome = Store.get('motorista', '');
     if (!nome) { telaSetup(); return; }
     limpar();
-    var hist = Store.get('historico', []), andamento = Store.get('andamento', null), cad = Store.get('cadastro', null);
+    TELA = 'inicio';
+    var hist = Hist.todos(), andamento = Store.get('andamento', null), cad = Store.get('cadastro', null), sinc = Store.get('cadastro_sync', null);
+    if (andamento && andamento.reg && Hist.porId(andamento.reg.id)) { Store.del('andamento'); andamento = null; }   // já concluída
     var nCad = cad ? Object.keys(cad).length : 0;
     var ult = hist[0];
     var corpo = el('div', { class: 'corpo' },
@@ -540,15 +799,15 @@
     corpo.appendChild(linha(btn('Histórico (' + hist.length + ')', 'sec', telaHistorico), btn('Configurações', 'sec', telaConfig)));
     corpo.appendChild(el('div', { class: 'status' },
       el('span', null, 'Voz: ', el('b', null, Ouvir.disponivel ? 'disponível' : 'indisponível — respostas por toque')),
-      el('span', null, 'Cadastro de veículos: ', el('b', null, nCad ? nCad + ' veículos' : 'não carregado')),
-      el('span', null, 'Dados: ', el('b', null, 'salvos neste aparelho'))));
+      el('span', null, 'Cadastro de veículos: ', el('b', null, nCad ? nCad + ' veículos' + (sinc && sinc.origem === 'servidor' ? ' (do servidor)' : '') : 'não carregado')),
+      el('span', null, 'Envio: ', el('b', { id: 'status-envio' }, textoEnvio()))));
     app.appendChild(el('div', { class: 'tela' }, topoSimples('Vistoria por Voz'), corpo));
   }
 
   /* ---------------- conversa ---------------- */
-  var V = null;
+  var V = null, TELA = '';
   function montarConversa() {
-    limpar();
+    limpar(); TELA = 'conversa';
     UI.chip = el('span', { class: 'chip-voz' });
     UI.sub = el('span', { class: 'h-s' }, 'Identificação');
     UI.prog = el('div', { class: 'prog-barra' });
@@ -601,7 +860,7 @@
       motorista: Store.get('motorista', ''), dispositivo: dispositivo(),
       hora_inicio: isoLocal(), hora_fim: null, duracao_total_seg: null, tipo_encerramento: null,
       frota: null, veiculo: null, frota_nao_cadastrada: false, respostas: [], relato_livre: '', pendencias: [], alertas: [],
-      central_conectada: CFG.centralConectada, status_envio: 'local', t_acao: null, t_sync: null, retomada: false
+      central_conectada: CFG.centralConectada, t_acao: null, retomada: false
     };
   }
   function salvarAndamento() { if (V && V.reg.frota) Store.set('andamento', { reg: V.reg, salvo: isoLocal() }); }
@@ -673,7 +932,7 @@
     V.reg.frota = num;
     V.reg.alertas = (V.reg.alertas || []).filter(function (x) { return x.tipo !== 'frota_repetida_dia'; });
     var rep = vistoriaHojeDaFrota(num), fila = false;
-    if (rep) { alertar('frota_repetida_dia', { vistoria_anterior: rep.id, hora_anterior: rep.hora_inicio }); appDiz(textoDasChaves(['frota_repetida']), ['frota_repetida']); fila = true; }
+    if (rep) { alertar('frota_repetida_dia', { vistoria_anterior: rep.id, hora_anterior: rep.hora_inicio, origem: rep.origem || 'aparelho' }); appDiz(textoDasChaves(['frota_repetida']), ['frota_repetida']); fila = true; }
     if (cad && Object.keys(cad).length) {
       var v = cad[chaveFrota(num)];
       if (!v) {
@@ -785,7 +1044,7 @@
     var ok = function () {
       motDiz('Sim'); V.reg.quilometragem = n;
       V.reg.alertas = (V.reg.alertas || []).filter(function (x) { return x.tipo !== 'km_menor'; });
-      if (menor) alertar('km_menor', { km: n, km_anterior: ant.km, vistoria_anterior: ant.vistoria, data_anterior: ant.data });
+      if (menor) alertar('km_menor', { km: n, km_anterior: ant.km, vistoria_anterior: ant.vistoria, data_anterior: ant.data, origem: ant.origem || 'aparelho' });
       registrar(it, o, sinal, txt);
     };
     var corrigir = function () { motDiz('Não'); renderNumero(it); };
@@ -919,11 +1178,11 @@
       ? Math.round((new Date(reg.hora_fim) - new Date(reg.hora_inicio)) / 1000)
       : seg(V.mono0, mono());
     Geo.fechar(reg);
-    var hist = Store.get('historico', []);
-    selar(reg, hist[0]);   // a partir daqui a vistoria não muda; só recebe complementos
-    hist.unshift(reg); Store.set('historico', hist);
-    Store.del('andamento');
-    Envio.enviar(reg);
+    selar(reg, Hist.todos()[0]);   // a partir daqui a vistoria não muda; só recebe complementos
+    Hist.adicionar(reg).then(function (ok) {
+      if (ok) Store.del('andamento'); else toast('Atenção: não foi possível salvar a vistoria no aparelho.', 6000);
+      Fila.processar();
+    });
     manterTelaLigada(false);
     UI.prog.style.width = '100%';
     UI.sub.textContent = tipo === 'imediato' ? 'Vistoria encerrada' : 'Vistoria concluída';
@@ -967,7 +1226,7 @@
 
   function retomar() {
     var a = Store.get('andamento', null);
-    if (!a) { telaInicio(); return; }
+    if (!a || (a.reg && Hist.porId(a.reg.id))) { Store.del('andamento'); telaInicio(); return; }
     V = { reg: a.reg, idx: 0, t: null, mono0: mono(), tentFrota: 0 };
     V.reg.retomada = true; V.reg.alertas = V.reg.alertas || [];
     Geo.iniciar(V.reg);
@@ -988,28 +1247,30 @@
   }
   function telaHistorico() {
     limpar();
-    var hist = Store.get('historico', []);
+    TELA = 'historico';
+    var hist = Hist.todos();
     var lista = el('div', { class: 'lista' });
     if (!hist.length) lista.appendChild(el('p', { class: 'vazio-msg' }, 'Nenhuma vistoria registrada ainda.'));
     hist.forEach(function (v) {
       var st = statusVistoria(v);
       lista.appendChild(el('button', { class: 'linha-hist', type: 'button', onclick: function () { telaDetalhe(v.id); } },
-        el('div', { class: 'lh-a' }, el('strong', null, 'Frota ' + (v.frota || '—')), el('span', null, fmt(v.hora_inicio) + ' · ' + fmtDur(v.duracao_total_seg))),
+        el('div', { class: 'lh-a' }, el('strong', null, 'Frota ' + (v.frota || '—')), el('span', null, fmt(v.hora_inicio) + ' · ' + fmtDur(v.duracao_total_seg) + (rotuloEnvio(v) ? ' · ' + rotuloEnvio(v) : ''))),
         el('span', { class: 'selo ' + st[0] }, st[1])));
     });
     app.appendChild(el('div', { class: 'tela' }, topoSimples('Histórico', telaInicio),
       el('div', { class: 'corpo' }, hist.length ? btn('Exportar planilha (CSV)', 'pri', function () { exportarCSV(hist); }) : null, lista)));
   }
   function telaDetalhe(id) {
-    var v = Store.get('historico', []).filter(function (x) { return x.id === id; })[0];
+    var v = Hist.porId(id);
     if (!v) { telaHistorico(); return; }
+    TELA = 'detalhe';
     limpar();
     var st = statusVistoria(v), veic = v.veiculo || {};
     var resumo = el('table', { class: 'dados' });
     [['Motorista', v.motorista], ['Frota', (v.frota || '—') + (v.frota_nao_cadastrada ? ' (fora do cadastro)' : '')],
       ['Veículo', [veic.marca, veic.modelo].filter(Boolean).join(' ') || '—'], ['Centro de coletas', veic.centro || '—'],
       ['Início', fmt(v.hora_inicio)], ['Fim', fmt(v.hora_fim)], ['Duração total', fmtDur(v.duracao_total_seg)],
-      ['Encerramento', infoEncerramento(v) ? infoEncerramento(v).detalhe : 'Normal'], ['Aparelho', v.dispositivo],
+      ['Encerramento', infoEncerramento(v) ? infoEncerramento(v).detalhe : 'Normal'], ['Envio', descricaoEnvio(v)], ['Aparelho', v.dispositivo],
       ['Localização', !v.localizacao ? '—' : v.localizacao.status === 'ok' ? ['inicio', 'checklist', 'fim'].map(function (m) { return m + ': ' + (fmtPonto(v.localizacao.pontos[m]) || '—'); }).join(' · ') : v.localizacao.status],
       ['Alertas', (v.alertas || []).length ? v.alertas.map(descreverAlerta).join('; ') : '—'],
       ['Lacre', { ok: 'Íntegra ✓ ' + v.integridade.hash.slice(0, 12) + '…', alterado: '⚠ REGISTRO ALTERADO APÓS A CONCLUSÃO', sem_lacre: 'Sem lacre (versão anterior do app)' }[verificarLacre(v)] || '—']]
@@ -1052,7 +1313,7 @@
     'duracao_total_seg', 'tipo_encerramento', 'motivo_encerramento', 'retomada', 'dispositivo', 'versao_checklist', 'versao_app', 'item_ordem', 'item_id', 'item',
     'pergunta', 'resposta', 'nivel', 'acao', 'sinal', 'transcricao', 'tentativas_voz', 't_anuncio', 't_prontidao', 't_resposta',
     'duracao_inspecao_seg', 'duracao_resposta_seg', 'relato_livre', 'loc_status', 'loc_inicio', 'loc_checklist', 'loc_fim',
-    'alertas', 'lacre', 'lacre_anterior', 'lacre_verificacao', 'complementos'];
+    'alertas', 'lacre', 'lacre_anterior', 'lacre_verificacao', 'complementos', 'envio_status', 'envio_em'];
   function gerarCSV(lista) {
     var esc = function (v) {
       if (v == null) return '';
@@ -1071,7 +1332,8 @@
         loc_checklist: v.localizacao ? fmtPonto(v.localizacao.pontos.checklist) : '', loc_fim: v.localizacao ? fmtPonto(v.localizacao.pontos.fim) : '',
         alertas: (v.alertas || []).map(descreverAlerta).join(' | '), lacre: v.integridade ? v.integridade.hash : '',
         lacre_anterior: v.integridade ? v.integridade.hash_anterior || '' : '', lacre_verificacao: verificarLacre(v),
-        complementos: (v.complementos || []).map(function (c) { return c.em + ' ' + c.autor + ': ' + c.texto; }).join(' | ') };
+        complementos: (v.complementos || []).map(function (c) { return c.em + ' ' + c.autor + ': ' + c.texto; }).join(' | '),
+        envio_status: v.envio ? v.envio.status : (Servidor.ativo() ? 'pendente' : 'local'), envio_em: (v.envio && v.envio.em) || '' };
       (v.respostas.length ? v.respostas : [{}]).forEach(function (r) {
         var row = Object.assign({}, base, { item_ordem: r.ordem, item_id: r.item_id, item: r.rotulo, pergunta: r.pergunta, resposta: r.resposta,
           nivel: r.nivel, acao: r.acao, sinal: r.sinal, transcricao: r.transcricao, tentativas_voz: r.tentativas_voz, t_anuncio: r.t_anuncio,
@@ -1127,7 +1389,7 @@
     return { cad: cad, n: n };
   }
   function telaConfig() {
-    limpar();
+    limpar(); TELA = 'config';
     var pref = Store.get('pref', {}) || {}, cad = Store.get('cadastro', null), nCad = cad ? Object.keys(cad).length : 0;
     var nome = el('input', { id: 'cfg-nome', type: 'text', value: Store.get('motorista', '') });
     var arquivo = el('input', { id: 'cfg-arq', type: 'file', accept: '.csv,.txt,text/csv,text/plain' });
@@ -1145,13 +1407,14 @@
     conf.addEventListener('change', function () { pref.confirmarToque = conf.checked; Store.set('pref', pref); toast('Preferência salva.'); });
     var apagar = btn('Apagar todas as vistorias deste aparelho', 'perigo', function (ev) {
       var b = ev.currentTarget;
-      if (b.dataset.conf) { Store.del('historico'); Store.del('andamento'); toast('Vistorias apagadas.'); telaConfig(); return; }
+      if (b.dataset.conf) { Hist.apagarTudo().then(function () { Store.del('andamento'); toast('Vistorias apagadas.'); telaConfig(); }); return; }
       b.dataset.conf = '1'; b.textContent = 'Toque de novo para apagar definitivamente';
     });
     app.appendChild(el('div', { class: 'tela' }, topoSimples('Configurações', telaInicio),
       el('div', { class: 'corpo' },
         el('div', { class: 'painel' }, el('label', { class: 'p-t', for: 'cfg-nome' }, 'Motorista deste aparelho'), nome,
           btn('Salvar nome', 'sec', function () { var v = nome.value.trim(); if (!v) { toast('Informe o nome.'); return; } Store.set('motorista', v); toast('Nome salvo.'); })),
+        painelServidor(),
         el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Cadastro de veículos'),
           el('div', null, nCad ? nCad + ' veículos carregados neste aparelho.' : 'Nenhum cadastro carregado. Sem cadastro, o app aceita qualquer frota.'),
           el('p', { class: 'dica' }, 'Arquivo CSV com cabeçalho: Frota; Marca; Modelo; Tipo; Ano; Centro de Coletas. Os dados ficam só neste aparelho.'),
@@ -1162,9 +1425,23 @@
         el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Respostas'),
           el('label', { class: 'check', for: 'cfg-conf' }, conf, el('span', null, 'Pedir confirmação também nas respostas por toque. (Respostas por voz sempre pedem confirmação.)'))),
         el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Dados'),
-          btn('Exportar todas as vistorias (CSV)', 'sec', function () { var h = Store.get('historico', []); if (!h.length) { toast('Nenhuma vistoria registrada.'); return; } exportarCSV(h); }),
+          btn('Exportar todas as vistorias (CSV)', 'sec', function () { var h = Hist.todos(); if (!h.length) { toast('Nenhuma vistoria registrada.'); return; } exportarCSV(h); }),
           MODO_TESTE ? apagar : el('p', { class: 'dica' }, 'Vistorias concluídas são lacradas e não podem ser apagadas no uso normal.')),
         el('p', { class: 'dica' }, 'Versão do app ' + VERSAO_APP + ' · checklist ' + C.versao + ' · ' + C.itens.length + ' itens'))));
+  }
+
+  function painelServidor() {
+    if (!Servidor.ativo()) return null;
+    var sinc = Store.get('cadastro_sync', null), saida = el('pre', { class: 'diag', id: 'diag-servidor' });
+    return el('div', { class: 'painel' }, el('span', { class: 'p-t' }, 'Servidor central'),
+      el('div', null, 'Envio: ', el('b', { id: 'status-envio' }, textoEnvio())),
+      Fila.ultimoErro ? el('div', { class: 'dica' }, 'Última tentativa: ' + Fila.ultimoErro) : null,
+      el('div', { class: 'dica' }, !sinc ? 'Cadastro ainda não atualizado pelo servidor.' : sinc.origem === 'servidor'
+        ? 'Cadastro atualizado pelo servidor em ' + fmt(sinc.em) + ' (' + sinc.veiculos + ' veículos).'
+        : 'Servidor sem veículos cadastrados (' + fmt(sinc.em) + '); vale o cadastro deste aparelho.'),
+      linha(btn('Enviar agora', 'sec', function () { Fila.processar().then(function () { telaConfig(); }); }),
+        btn('Atualizar cadastro', 'sec', function () { Sinc.cadastro().then(function () { telaConfig(); }); })),
+      btn('Testar conexão', 'sec', function () { testarConexao(saida); }), saida);
   }
 
   /* ---------------- início ---------------- */
@@ -1174,6 +1451,16 @@
     window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
   }
   // Ganchos para testes automatizados
-  window.__vv = { Clips: Clips, Player: Player, gerarCSV: gerarCSV, importarCadastro: importarCadastro, casarOpcao: casarOpcao, paraDigitos: paraDigitos, simNao: simNao, paraNumero: paraNumero, temDecimal: temDecimal, sha256: sha256, verificarLacre: verificarLacre, CFG: CFG };
-  telaInicio();
+  window.__vv = { Clips: Clips, Player: Player, gerarCSV: gerarCSV, importarCadastro: importarCadastro, casarOpcao: casarOpcao, paraDigitos: paraDigitos, simNao: simNao, paraNumero: paraNumero, temDecimal: temDecimal, sha256: sha256, verificarLacre: verificarLacre, CFG: CFG,
+    Hist: Hist, Fila: Fila, Servidor: Servidor, Sinc: Sinc };
+  // Envio e cadastro: ao abrir, quando o sinal volta e a cada 2 minutos enquanto houver pendência
+  window.addEventListener('online', function () { Fila.processar(); Sinc.talvez(); });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { Fila.processar(); Sinc.talvez(); } });
+  setInterval(function () { if (Fila.pendentes().length) Fila.processar(); }, 120000);
+  Hist.carregar().then(function () {
+    telaInicio();
+    Fila.processar();
+    Sinc.cadastro().then(function (r) { if (r && TELA === 'inicio') telaInicio(); });
+    Hist.limpar();
+  });
 })();

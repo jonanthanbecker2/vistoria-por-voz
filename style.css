@@ -102,6 +102,8 @@ body.ouvindo .btn.mic { background: var(--acento); color: var(--acento-tinta); a
   padding: 10px; min-height: 60px; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .visor.vazio { color: var(--tinta2); }
 .visor.alerta { background: var(--acento-suave); outline: 2px solid var(--leve); }
+.diag { font: 13px/1.5 var(--mono); white-space: pre-wrap; margin: 6px 0 0; color: var(--tinta); }
+.diag:empty { display: none; }
 .compl { border-top: 1px solid var(--linha); padding-top: 8px; margin-top: 4px; }
 .teclado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .teclado .btn { font: 600 24px var(--mono); min-height: 56px; padding: 8px; }

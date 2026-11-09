@@ -73,3 +73,12 @@ Os áudios ficam guardados no celular junto com o app (funcionam sem internet).
 - **Localização** (configurável em `CFG.localizacao`, a validar pela empresa/LGPD): registrada só durante a vistoria, em três momentos — início, início do checklist e conclusão (lat, lon, precisão). Aviso ao motorista antes da primeira vistoria. Permissão negada não impede a vistoria; a recusa fica registrada.
 - **Validações cruzadas** (neste aparelho; no servidor valerão entre todos): KM menor que o da última vistoria da frota (avisa e pede conferência) e frota já vistoriada no dia (avisa e registra). Tempo de vistoria: só registrado, sem limite nesta fase.
 - **Imutabilidade:** cada vistoria concluída recebe um lacre SHA-256 encadeado ao da anterior. Alteração posterior é detectada no detalhe e na planilha. Informações posteriores entram como **complementos**, com data e lacre próprios. Apagar vistorias só no modo de teste (`?teste=1`).
+
+## Servidor central (v0.8.0)
+
+- **Banco:** Supabase (PostgreSQL), região São Paulo. Estrutura em `servidor/001_estrutura.sql` e `servidor/002_ultimos_e_validacoes.sql`, executados em ordem no SQL Editor.
+- **Envio:** toda vistoria concluída é lacrada, gravada no aparelho (IndexedDB) e entra na fila de envio. Sem sinal, a fila tenta de novo ao abrir o app, quando o sinal volta e a cada 2 minutos. O reenvio não duplica (o servidor reconhece o número da vistoria). Lacre divergente é recusado.
+- **Cadastro:** veículos e vencimentos são baixados do servidor ao abrir o app e ficam no aparelho para uso sem sinal. Servidor sem veículos: vale o cadastro importado no aparelho.
+- **Validações entre celulares:** o último KM e a última vistoria de cada frota vêm do servidor; o servidor também registra os alertas ao receber, se o celular não sabia.
+- **Diagnóstico:** Configurações → Servidor central → Testar conexão.
+- **Histórico no aparelho:** vistorias já confirmadas pelo servidor saem do aparelho depois de 30 dias.
