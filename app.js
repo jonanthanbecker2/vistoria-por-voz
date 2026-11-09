@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.8.0';
+  var VERSAO_APP = '0.8.1';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   // Modo de teste (abrir o app com ?teste=1): libera "apagar vistorias" para treinamento e testes
   try { if (/[?&]teste=1/.test(location.search)) localStorage.setItem('vv_modo_teste', '1'); if (/[?&]teste=0/.test(location.search)) localStorage.removeItem('vv_modo_teste'); } catch (e) {}
@@ -18,7 +18,7 @@
     localizacao: true,
     // Servidor central (Supabase, São Paulo). A chave publicável é feita para ficar no app:
     // a segurança está nas regras do banco (o app só envia vistorias e lê o cadastro).
-    servidor: { url: 'https://udzegivmhhiopudnxes.supabase.co', chave: 'sb_publishable_A6V_SpGYp1MmRIoLYCSNxg_WGdmaSHQ' }
+    servidor: { url: 'https://udzegivmhhiopudnuxes.supabase.co', chave: 'sb_publishable_A6V_SpGYp1MmRIoLYCSNxg_WGdmaSHQ' }
   };
   var app = document.getElementById('app');
 
