@@ -7,7 +7,7 @@
 (function () {
   'use strict';
 
-  var VERSAO_APP = '0.8.1';
+  var VERSAO_APP = '0.9.0';
   var C = window.CHECKLIST, ACOES = window.ACOES;
   // Modo de teste (abrir o app com ?teste=1): libera "apagar vistorias" para treinamento e testes
   try { if (/[?&]teste=1/.test(location.search)) localStorage.setItem('vv_modo_teste', '1'); if (/[?&]teste=0/.test(location.search)) localStorage.removeItem('vv_modo_teste'); } catch (e) {}
@@ -80,6 +80,13 @@
     return arr.slice(0, -1).join(', ') + ' ou ' + arr[arr.length - 1];
   }
   function chaveFrota(f) { var d = String(f).replace(/\D/g, ''); return d ? String(parseInt(d, 10)) : ''; }
+  // Datas de vencimento ('aaaa-mm-dd'), contadas no dia do celular
+  function hojeISO() { var t = new Date(); return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()); }
+  function diasAte(iso) {
+    var a = hojeISO().split('-'), b = iso.split('-');
+    return Math.round((Date.UTC(+b[0], b[1] - 1, +b[2]) - Date.UTC(+a[0], a[1] - 1, +a[2])) / 86400000);
+  }
+  function fmtData(iso) { var p = String(iso).split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
   function dispositivo() {
     var ua = navigator.userAgent, m = ua.match(/Android [\d.]+; ([^;)]+)/);
     if (m) return 'Android · ' + m[1].trim();
@@ -1177,6 +1184,7 @@
     reg.duracao_total_seg = reg.retomada
       ? Math.round((new Date(reg.hora_fim) - new Date(reg.hora_inicio)) / 1000)
       : seg(V.mono0, mono());
+    if (tipo === 'normal') avaliarDocumentos(reg);   // antes do lacre: o que foi orientado fica registrado
     Geo.fechar(reg);
     selar(reg, Hist.todos()[0]);   // a partir daqui a vistoria não muda; só recebe complementos
     Hist.adicionar(reg).then(function (ok) {
@@ -1194,6 +1202,33 @@
     ultimoRender();
   }
 
+  // Fim da vistoria: consulta os vencimentos da frota no cadastro guardado no celular (baixado do servidor).
+  // Vencido ou vencendo em até 7 dias vira ponto de atenção; CRLV, CIPP e ATIPP vencidos orientam não utilizar o veículo.
+  function avaliarDocumentos(reg) {
+    var D = window.DOCUMENTOS;
+    if (!D || !reg.frota || reg.frota_nao_cadastrada) return;
+    var cad = Store.get('cadastro', null) || {}, v = cad[chaveFrota(reg.frota)] || reg.veiculo;
+    if (!v) return;
+    var sinc = Store.get('cadastro_sync', null) || {}, venc = v.venc || {}, alertas = [];
+    D.lista.forEach(function (d) {
+      var iso = venc[d.id]; if (!iso) return;          // sem data no cadastro: não há o que avisar ao motorista
+      var n = diasAte(iso), vencido = n < 0;
+      if (!vencido && n > D.avisoDias) return;
+      var a = { documento: d.id, situacao: vencido ? 'vencido' : 'a_vencer', vencimento: iso, dias: n };
+      alertas.push(a);
+      reg.pendencias.push({ item_id: 'doc_' + d.id + (vencido ? '_vencido' : '_avencer'),
+        rotulo: d.nome + (vencido ? (d.fem ? ' vencida' : ' vencido') : ' a vencer'),
+        detalhe: vencido ? 'venceu em ' + fmtData(iso) : n === 0 ? 'vence hoje' : 'vence em ' + fmtData(iso),
+        nivel: vencido ? 'GRAVE' : 'LEVE', acao: vencido && d.impede ? 'DOC_NAO_UTILIZAR' : 'VERIFICAR_DOCUMENTOS' });
+    });
+    reg.documentos = { consultado_em: isoLocal(), cadastro_em: sinc.em || null, cadastro_origem: sinc.origem || null, alertas: alertas };
+  }
+  function descreverDocumentos(v) {
+    if (!v.documentos) return '—';
+    if (!v.documentos.alertas.length) return 'Nenhum vencido ou a vencer';
+    return v.pendencias.filter(function (p) { return /^doc_/.test(p.item_id); }).map(function (p) { return p.rotulo + ' (' + p.detalhe + ')'; }).join('; ');
+  }
+
   function falarResumo(reg) {
     var nome = primeiroNome(reg.motorista), grupos = {};
     reg.pendencias.forEach(function (p) { (grupos[p.acao] = grupos[p.acao] || []).push(p); });
@@ -1204,16 +1239,23 @@
       despedir();
       return;
     }
-    appDiz('Atenção aos pontos a seguir.', ['resultado_atencao'], true);
+    var chaves = ['resultado_atencao'];
+    balao('app', textoDasChaves(chaves));
     ordem.forEach(function (ac) {
       var lista = grupos[ac], a = ACOES[ac];
-      cartao(a.prioridade <= 2 ? 'grave' : 'leve', textoDasChaves(['acao_' + ac]) || a.texto, null, el('ul', { class: 'c-lista' }, lista.map(function (p) { return el('li', null, p.rotulo); })));
-      Fala.dizer(['acao_' + ac, 'itens'].concat(lista.map(function (p) { return 'rot_' + p.item_id; })), true);
+      cartao(a.prioridade <= 2 ? 'grave' : 'leve', textoDasChaves(['acao_' + ac]) || a.texto, null, el('ul', { class: 'c-lista' }, lista.map(function (p) {
+        return el('li', null, p.rotulo, p.detalhe ? el('span', { class: 'c-det' }, ' · ' + p.detalhe) : null);
+      })));
+      // documentos: "Documento vencido. Não utilize… CRLV vencido." (sem "Itens:" e sem ler a data)
+      chaves = chaves.concat(['acao_' + ac], a.documento ? [] : ['itens'], lista.map(function (p) { return 'rot_' + p.item_id; }));
     });
-    despedir();
+    // Uma fala só, do resumo à despedida: com todos os áudios gravados, tocam em sequência; se faltar
+    // algum (ex.: frase nova ainda sem áudio), a voz do celular lê tudo de uma vez, sem sobrepor os áudios.
+    Fala.dizer(chaves.concat(['despedida']), true);
   }
-  // Fala final de toda vistoria concluída (não usada no encerramento imediato)
-  function despedir() { appDiz('Checklist finalizado. Lhe desejamos um excelente dia!', ['despedida'], true); }
+  // Fala final de toda vistoria concluída (não usada no encerramento imediato).
+  // Exceção pedida no piloto à regra "a tela mostra o que é falado": a despedida é só falada.
+  function despedir() { Fala.dizer(['despedida'], true); }
 
   function sairVistoria() {
     Fala.parar(); Ouvir.parar(); Geo.parar();
@@ -1273,6 +1315,7 @@
       ['Encerramento', infoEncerramento(v) ? infoEncerramento(v).detalhe : 'Normal'], ['Envio', descricaoEnvio(v)], ['Aparelho', v.dispositivo],
       ['Localização', !v.localizacao ? '—' : v.localizacao.status === 'ok' ? ['inicio', 'checklist', 'fim'].map(function (m) { return m + ': ' + (fmtPonto(v.localizacao.pontos[m]) || '—'); }).join(' · ') : v.localizacao.status],
       ['Alertas', (v.alertas || []).length ? v.alertas.map(descreverAlerta).join('; ') : '—'],
+      ['Documentos', descreverDocumentos(v)],
       ['Lacre', { ok: 'Íntegra ✓ ' + v.integridade.hash.slice(0, 12) + '…', alterado: '⚠ REGISTRO ALTERADO APÓS A CONCLUSÃO', sem_lacre: 'Sem lacre (versão anterior do app)' }[verificarLacre(v)] || '—']]
       .forEach(function (p) { resumo.appendChild(el('tr', null, el('td', null, p[0]), el('td', null, p[1]))); });
     var tab = el('table', { class: 'resp' }, el('thead', null, el('tr', null, el('th', null, 'Item'), el('th', null, 'Resposta'),
@@ -1313,7 +1356,7 @@
     'duracao_total_seg', 'tipo_encerramento', 'motivo_encerramento', 'retomada', 'dispositivo', 'versao_checklist', 'versao_app', 'item_ordem', 'item_id', 'item',
     'pergunta', 'resposta', 'nivel', 'acao', 'sinal', 'transcricao', 'tentativas_voz', 't_anuncio', 't_prontidao', 't_resposta',
     'duracao_inspecao_seg', 'duracao_resposta_seg', 'relato_livre', 'loc_status', 'loc_inicio', 'loc_checklist', 'loc_fim',
-    'alertas', 'lacre', 'lacre_anterior', 'lacre_verificacao', 'complementos', 'envio_status', 'envio_em'];
+    'alertas', 'documentos', 'lacre', 'lacre_anterior', 'lacre_verificacao', 'complementos', 'envio_status', 'envio_em'];
   function gerarCSV(lista) {
     var esc = function (v) {
       if (v == null) return '';
@@ -1330,7 +1373,8 @@
         dispositivo: v.dispositivo, versao_checklist: v.versao_checklist, versao_app: v.versao_app, relato_livre: v.relato_livre,
         loc_status: v.localizacao ? v.localizacao.status : '', loc_inicio: v.localizacao ? fmtPonto(v.localizacao.pontos.inicio) : '',
         loc_checklist: v.localizacao ? fmtPonto(v.localizacao.pontos.checklist) : '', loc_fim: v.localizacao ? fmtPonto(v.localizacao.pontos.fim) : '',
-        alertas: (v.alertas || []).map(descreverAlerta).join(' | '), lacre: v.integridade ? v.integridade.hash : '',
+        alertas: (v.alertas || []).map(descreverAlerta).join(' | '), documentos: v.documentos ? descreverDocumentos(v) : '',
+        lacre: v.integridade ? v.integridade.hash : '',
         lacre_anterior: v.integridade ? v.integridade.hash_anterior || '' : '', lacre_verificacao: verificarLacre(v),
         complementos: (v.complementos || []).map(function (c) { return c.em + ' ' + c.autor + ': ' + c.texto; }).join(' | '),
         envio_status: v.envio ? v.envio.status : (Servidor.ativo() ? 'pendente' : 'local'), envio_em: (v.envio && v.envio.em) || '' };
@@ -1452,7 +1496,7 @@
   }
   // Ganchos para testes automatizados
   window.__vv = { Clips: Clips, Player: Player, gerarCSV: gerarCSV, importarCadastro: importarCadastro, casarOpcao: casarOpcao, paraDigitos: paraDigitos, simNao: simNao, paraNumero: paraNumero, temDecimal: temDecimal, sha256: sha256, verificarLacre: verificarLacre, CFG: CFG,
-    Hist: Hist, Fila: Fila, Servidor: Servidor, Sinc: Sinc };
+    Hist: Hist, Fila: Fila, Servidor: Servidor, Sinc: Sinc, avaliarDocumentos: avaliarDocumentos };
   // Envio e cadastro: ao abrir, quando o sinal volta e a cada 2 minutos enquanto houver pendência
   window.addEventListener('online', function () { Fila.processar(); Sinc.talvez(); });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { Fila.processar(); Sinc.talvez(); } });

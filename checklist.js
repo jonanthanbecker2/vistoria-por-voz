@@ -138,6 +138,22 @@
 
   window.CHECKLIST = { versao: 'diario-v5', itens: itens };
 
+  // Documentos com vencimento no cadastro do servidor, consultados quando a vistoria termina.
+  // impede: vencido orienta "não utilize o veículo". fem: concorda "vencida".
+  window.DOCUMENTOS = {
+    avisoDias: 7,   // "a vencer": vence hoje ou nos próximos 7 dias
+    lista: [
+      { id: 'crlv', nome: 'CRLV', impede: true },
+      { id: 'civ', nome: 'CIV' },
+      { id: 'cipp', nome: 'CIPP', impede: true },
+      { id: 'tacografo', nome: 'Certificado do tacógrafo' },
+      { id: 'ctf', nome: 'CTF' },
+      { id: 'atipp', nome: 'ATIPP', fem: true, impede: true },
+      { id: 'lic_estadual', nome: 'Licença ambiental estadual', fem: true },
+      { id: 'lic_municipal', nome: 'Licença ambiental municipal', fem: true }
+    ]
+  };
+
   // Ações: o que o app faz com cada resposta.
   // prioridade ordena o resumo final (menor = mais urgente).
   window.ACOES = {
@@ -150,6 +166,9 @@
     CONTATO_CENTRAL: { prioridade: 2, texto: 'Recomendamos entrar em contato com a central antes de iniciar o deslocamento.' },
     REPARO_CENTRAL: { prioridade: 3, texto: 'Solicite o reparo à central.' },
     APOIO_COLETAS: { prioridade: 4, texto: 'Solicite o reparo, a troca ou os itens faltantes no centro de coletas.' },
+    // documentos do cadastro (não são respostas do motorista): cartão próprio, a voz não lê a data
+    DOC_NAO_UTILIZAR: { prioridade: 1.5, documento: true, texto: 'Documento vencido. Não utilize o veículo e entre em contato com a central.' },
+    VERIFICAR_DOCUMENTOS: { prioridade: 4.5, documento: true, texto: 'Verifique com o centro de coletas os documentos vencidos ou a vencer.' },
     COMPLETAR_NIVEL: { prioridade: 5, texto: 'Complete o nível e acompanhe se voltará a baixar.' },
     REPARO_RECOMENDADO: { prioridade: 6, texto: 'Recomendamos providenciar o reparo, sem impedir o uso agora.' },
     SO_REGISTRA: { prioridade: 9, silencioso: true },

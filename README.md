@@ -82,3 +82,19 @@ Os áudios ficam guardados no celular junto com o app (funcionam sem internet).
 - **Validações entre celulares:** o último KM e a última vistoria de cada frota vêm do servidor; o servidor também registra os alertas ao receber, se o celular não sabia.
 - **Diagnóstico:** Configurações → Servidor central → Testar conexão.
 - **Histórico no aparelho:** vistorias já confirmadas pelo servidor saem do aparelho depois de 30 dias.
+
+## Cadastro da frota no servidor
+
+1. `servidor/003_cadastro.sql` (uma vez): o app passa a ler dos documentos só frota, tipo, vencimento, UF e município (o número fica restrito ao painel), e a carga repetida não duplica documentos.
+2. Preencher `Cadastro_Frota_Modelo.xlsx` (gerado por `ferramentas/modelo_cadastro.py`) e salvar como `Cadastro_Frota.xlsx` — **fora** desta pasta, que é pública.
+3. `python ferramentas/gerar_carga_cadastro.py Cadastro_Frota.xlsx` confere a planilha (`relatorio_cadastro.txt`) e, sem erros, gera `carga_cadastro.sql` para o SQL Editor. Veículos são atualizados pela frota; para cada veículo da planilha, os documentos no servidor ficam iguais aos da planilha (correção substitui; renovação = linha nova, que fica como histórico). Veículos fora da planilha não são tocados.
+4. No app: Configurações → Atualizar cadastro.
+
+## Vencimento de documentos (v0.9.0)
+
+- Ao concluir a vistoria, o app consulta os vencimentos da frota no cadastro guardado no celular (baixado do servidor).
+- **Vencido** ou **vencendo em até 7 dias** (inclusive hoje) vira ponto de atenção no resumo final, num cartão próprio. A data aparece só na tela; a voz diz apenas "CRLV vencido", "CTF a vencer" etc.
+- **CRLV, CIPP ou ATIPP vencido:** "Documento vencido. Não utilize o veículo e entre em contato com a central." Demais documentos vencidos ou a vencer: "Verifique com o centro de coletas os documentos vencidos ou a vencer."
+- Licença em mais de um estado ou município: vale a que vence primeiro. Documento sem data no cadastro ou frota fora do cadastro: não há aviso.
+- A consulta entra na vistoria antes do lacre (`documentos`: quando consultou, de quando era o cadastro e o que avisou) e as orientações vão ao servidor como pendências, com o detalhe da data.
+- A frase final ("Checklist finalizado…") passou a ser só falada.

@@ -47,7 +47,9 @@
     acao_REPARO_CENTRAL: 'Solicite o reparo à central.',
     acao_APOIO_COLETAS: 'Solicite o reparo, a troca ou os itens faltantes no centro de coletas.',
     acao_COMPLETAR_NIVEL: 'Complete o nível, e acompanhe se volta a baixar.',
-    acao_REPARO_RECOMENDADO: 'Recomendamos providenciar o reparo, mas o uso não está impedido.'
+    acao_REPARO_RECOMENDADO: 'Recomendamos providenciar o reparo, mas o uso não está impedido.',
+    acao_DOC_NAO_UTILIZAR: 'Documento vencido. Não utilize o veículo, e entre em contato com a central.',
+    acao_VERIFICAR_DOCUMENTOS: 'Verifique com o centro de coletas os documentos vencidos ou a vencer.'
   };
 
   function minuscula(t) { return t.charAt(0).toLowerCase() + t.slice(1); }
@@ -70,6 +72,12 @@
       it.opcoes.forEach(function (o, i) {
         if (!/^(sim|não)$/i.test(o.texto)) f['conf_' + it.id + '_' + i] = 'Entendi: ' + minuscula(o.texto) + '. Confirma?';
       });
+    });
+    // documentos do cadastro: "CRLV vencido." / "CRLV a vencer." (a data aparece só na tela)
+    var D = typeof window !== 'undefined' && window.DOCUMENTOS;
+    if (D) D.lista.forEach(function (d) {
+      f['rot_doc_' + d.id + '_vencido'] = d.nome + (d.fem ? ' vencida.' : ' vencido.');
+      f['rot_doc_' + d.id + '_avencer'] = d.nome + ' a vencer.';
     });
     return f;
   }
