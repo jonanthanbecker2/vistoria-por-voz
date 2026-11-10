@@ -98,3 +98,17 @@ Os áudios ficam guardados no celular junto com o app (funcionam sem internet).
 - Licença em mais de um estado ou município: vale a que vence primeiro. Documento sem data no cadastro ou frota fora do cadastro: não há aviso.
 - A consulta entra na vistoria antes do lacre (`documentos`: quando consultou, de quando era o cadastro e o que avisou) e as orientações vão ao servidor como pendências, com o detalhe da data.
 - A frase final ("Checklist finalizado…") passou a ser só falada.
+
+## Painel da central (script 004)
+
+- `painel.html` (com `painel.js` e `painel.css`): vistorias que pedem intervenção da central, da mais crítica para a menos crítica, com cronômetro desde a vistoria. Meta de 15 minutos só para os graves (vistoria encerrada na hora e "não utilize o veículo").
+- Atendimento **por veículo**: avaliação da central, ação realizada, executada de imediato ou programada (com data) e se o veículo foi liberado. Vistoria atendida sai da lista; a programada vai para a aba **Programadas** até alguém confirmar a execução.
+- Acesso: login do Supabase (e-mail e senha) **e** e-mail liberado na tabela `usuarios_painel`. Atendimentos são somente inclusão, como as vistorias.
+- `servidor/004_painel_central.sql` cria as tabelas, as consultas do painel e as funções de gravação.
+
+## Próximos passos (anotados)
+
+1. Página de indicadores de gestão.
+2. Painel do centro de coletas, para os itens encaminhados a ele; deve mostrar também as manutenções programadas, para acompanhamento.
+3. Painel de controle de documentos, de um setor específico.
+4. Login do motorista (matrícula + PIN) e limpeza das vistorias de teste, antes de usar dados reais.

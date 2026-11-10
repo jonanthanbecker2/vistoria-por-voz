@@ -28,6 +28,7 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   var r = e.request;
   if (r.method !== 'GET' || new URL(r.url).origin !== self.location.origin) return;
+  if (/\/(painel|indicadores)\./.test(new URL(r.url).pathname)) return;   // páginas da central: sempre da rede, nunca do cache
   e.respondWith(caches.match(r, { ignoreSearch: true }).then(function (cache) {
     var rede = fetch(r).then(function (resp) {
       if (resp && resp.ok) { var copia = resp.clone(); caches.open(VERSAO).then(function (c) { c.put(r, copia); }); }
