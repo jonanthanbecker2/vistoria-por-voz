@@ -98,36 +98,48 @@ legend { font-weight: 600; font-size: 14px; padding: 0 6px; }
 
 .prot { font-family: var(--mono); font-size: 18px; }
 
-/* indicadores */
+/* indicadores: um gráfico por tela, escolhido no menu da esquerda */
+.viz { --serie-1: #2A6FB8; --serie-2: #D9822B; }
 .filtros { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; margin-bottom: 16px; }
 .filtros label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: var(--tinta2); }
 .filtros input, .filtros select { border: 1px solid var(--linha); border-radius: 8px; padding: 8px 10px; background: var(--sup); font: inherit; color: var(--tinta); }
+.duas { display: grid; grid-template-columns: 250px 1fr; gap: 18px; align-items: start; max-width: 1400px; margin: 0 auto; padding: 18px 20px 40px; }
+.menu { display: grid; gap: 4px; position: sticky; top: 74px; }
+.menu button { text-align: left; border: 1px solid transparent; background: transparent; border-radius: 8px; padding: 9px 12px; font-weight: 600; color: var(--tinta2); }
+.menu button:hover { background: var(--sup2); }
+.menu button[aria-current="true"] { background: var(--sup); border-color: var(--linha); color: var(--acento); box-shadow: inset 4px 0 0 var(--acento); }
+.tela-g { background: var(--sup); border: 1px solid var(--linha); border-radius: 14px; padding: 22px 26px; min-height: calc(100vh - 190px); display: flex; flex-direction: column; min-width: 0; }
+.tela-g h2 { font-size: 22px; }
+.tela-g > .dica { margin: 2px 0 18px; font-size: 15px; }
+.colunas { flex: 1; display: flex; align-items: stretch; gap: clamp(8px, 2.2vw, 34px); min-height: 340px; border-bottom: 2px solid var(--linha); padding: 0 6px; }
+.coluna { flex: 1; max-width: 190px; min-width: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; margin: 0 auto; }
+.coluna .v { font-size: clamp(18px, 2.2vw, 30px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.coluna .v small { display: block; font-size: 13px; font-weight: 600; color: var(--tinta2); text-align: center; }
+.coluna .b { width: 100%; background: var(--serie-1); border-radius: 4px 4px 0 0; min-height: 2px; }
+.coluna.dest .b { background: var(--acento); }
+.nomes { display: flex; gap: clamp(8px, 2.2vw, 34px); padding: 8px 6px 0; }
+.nomes span { flex: 1; max-width: 190px; min-width: 0; margin: 0 auto; text-align: center; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.barras { display: grid; gap: 10px; }
+.barra { display: grid; grid-template-columns: minmax(150px, 30%) 1fr auto; gap: 12px; align-items: center; font-size: 16px; }
+.barra .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.barra .trilho { height: 22px; background: var(--bg); border-radius: 4px; }
+.barra .cheio { height: 100%; background: var(--serie-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.barra .num { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 18px; min-width: 2ch; text-align: right; }
+.barra .num small { font-weight: 400; font-size: 13px; color: var(--tinta2); }
+.nota-g { margin-top: 14px; color: var(--tinta2); font-size: 14px; }
+table.dados { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.dados th { text-align: left; color: var(--tinta2); font-weight: 600; border-bottom: 1px solid var(--linha); padding: 7px 8px; position: sticky; top: 0; background: var(--sup); }
+table.dados td { padding: 8px; border-bottom: 1px solid var(--bg); font-variant-numeric: tabular-nums; }
+table.dados td.n, table.dados th.n { text-align: right; }
+.sit { display: inline-block; border-radius: 6px; padding: 2px 9px; font-size: 13px; font-weight: 700; color: #FFFFFF; background: var(--amarelo); white-space: nowrap; }
+.sit.venc { background: var(--grave); }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px; }
 .tile { background: var(--sup); border: 1px solid var(--linha); border-radius: 12px; padding: 14px 16px; }
 .tile .rot { font-size: 13px; font-weight: 600; color: var(--tinta2); }
 .tile .val { font-size: 34px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .tile .nota { font-size: 13px; color: var(--tinta2); }
-.grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
-.bloco { background: var(--sup); border: 1px solid var(--linha); border-radius: 12px; padding: 16px 18px; min-width: 0; }
-.bloco.largo { grid-column: 1 / -1; }
-.bloco h2 { font-size: 16px; margin-bottom: 2px; }
-.bloco .dica { margin-bottom: 12px; }
-.viz { --serie-1: #2A6FB8; --serie-2: #D9822B; }
-.legenda { display: flex; gap: 16px; font-size: 13px; color: var(--tinta2); margin-bottom: 8px; }
-.legenda i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
-.barras { display: grid; gap: 7px; }
-.barra { display: grid; grid-template-columns: minmax(120px, 34%) 1fr auto; gap: 10px; align-items: center; font-size: 14px; }
-.barra .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.barra .trilho { height: 14px; background: var(--bg); border-radius: 4px; }
-.barra .cheio { height: 100%; background: var(--serie-1); border-radius: 0 4px 4px 0; min-width: 2px; }
-.barra .num { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 2ch; text-align: right; }
-.barra .num small { font-weight: 400; color: var(--tinta2); }
-.dias svg { display: block; width: 100%; height: auto; }
-.dias .eixo { font-size: 11px; fill: var(--tinta2); }
-.dias .linha { stroke: var(--linha); stroke-width: 1; }
-.dias .col:hover rect.fundo { fill: var(--bg); }
-.dica-flut { position: fixed; z-index: 20; pointer-events: none; background: var(--tinta); color: #FFFFFF; font-size: 13px; padding: 6px 9px; border-radius: 6px; white-space: pre; }
-table.dados { width: 100%; border-collapse: collapse; font-size: 14px; }
-table.dados th { text-align: left; color: var(--tinta2); font-weight: 600; border-bottom: 1px solid var(--linha); padding: 4px 6px; }
-table.dados td { padding: 5px 6px; border-bottom: 1px solid var(--bg); font-variant-numeric: tabular-nums; }
-table.dados td.n, table.dados th.n { text-align: right; }
+@media (max-width: 860px) {
+  .duas { grid-template-columns: 1fr; }
+  .menu { position: static; grid-auto-flow: column; overflow-x: auto; grid-auto-columns: max-content; }
+  .barra { grid-template-columns: 1fr auto; } .barra .trilho { grid-column: 1 / -1; order: 3; }
+}

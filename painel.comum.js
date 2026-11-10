@@ -100,7 +100,7 @@
   // Cabeçalho igual nas duas páginas, com a troca entre elas
   function topo(pagina, quem, meio) {
     var link = function (href, txt, id) { return el('a', { class: 'pag', href: href, 'aria-current': pagina === id ? 'page' : null }, txt); };
-    return el('header', { class: 'topo' }, el('nav', { class: 'pags', 'aria-label': 'Páginas' }, link('painel.html', 'Painel da central', 'painel'), link('indicadores.html', 'Indicadores', 'indicadores')),
+    return el('header', { class: 'topo' }, el('nav', { class: 'pags', 'aria-label': 'Páginas' }, link('painel.html', 'Painel da central', 'painel'), link('indicadores.html', 'Indicadores', 'indicadores'), link('documentos.html', 'Documentos', 'documentos')),
       meio || null, el('div', { class: 'quem' }, el('span', null, quem.nome || quem.email), el('button', { class: 'btn', type: 'button', onclick: function () { sair(''); } }, 'Sair')));
   }
   C.el = el; C.p2 = p2; C.api = api; C.sair = sair; C.abrir = abrir; C.topo = topo; C.raiz = raiz;

@@ -113,6 +113,12 @@ Os áudios ficam guardados no celular junto com o app (funcionam sem internet).
 - `indicadores.html` (com `indicadores.js`): totais do mês, encaminhados por área, tratados, enviados × tratados por dia, falhas por item, checklists por centro, ações realizadas, atendimentos por atendente, tempo médio, graves na meta de 15 minutos, frota vistoriada e agendamentos em aberto. Filtros de mês e centro de coletas.
 - `painel.comum.js`: login e sessão, usados pelas duas páginas.
 
+## Indicadores por tela e painel de documentos (script 006)
+
+- `indicadores.html`: um gráfico por tela, escolhido no menu — checklists do mês, falhas por item, casos graves, checklists por centro, aderência, tempo médio (nacional e por centro), imediatas × programadas, programadas × executadas × pendentes, reincidências e atendimentos por atendente.
+- `documentos.html` (com `documentos.js`): documentos vencidos e a vencer dos veículos ativos, com filtro por centro de coletas e por prazo.
+- O script 006 também restringe a leitura completa dos documentos (com número) a usuário liberado.
+
 ## Próximos passos (anotados)
 
 1. Painel de manutenção programada (hoje é a aba Programadas do painel da central).
