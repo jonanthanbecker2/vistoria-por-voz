@@ -106,9 +106,16 @@ Os áudios ficam guardados no celular junto com o app (funcionam sem internet).
 - Acesso: login do Supabase (e-mail e senha) **e** e-mail liberado na tabela `usuarios_painel`. Atendimentos são somente inclusão, como as vistorias.
 - `servidor/004_painel_central.sql` cria as tabelas, as consultas do painel e as funções de gravação.
 
+## Protocolo e indicadores (script 005)
+
+- Cada atendimento recebe um protocolo (`AT-aaaammdd-00001`) e guarda o e-mail de quem atendeu.
+- "Ação realizada" é uma lista: atendimento no local, atendimento em prestador, informação incorreta, agendamento futuro (este pede a data e vai para Programadas).
+- `indicadores.html` (com `indicadores.js`): totais do mês, encaminhados por área, tratados, enviados × tratados por dia, falhas por item, checklists por centro, ações realizadas, atendimentos por atendente, tempo médio, graves na meta de 15 minutos, frota vistoriada e agendamentos em aberto. Filtros de mês e centro de coletas.
+- `painel.comum.js`: login e sessão, usados pelas duas páginas.
+
 ## Próximos passos (anotados)
 
-1. Página de indicadores de gestão.
+1. Painel de manutenção programada (hoje é a aba Programadas do painel da central).
 2. Painel do centro de coletas, para os itens encaminhados a ele; deve mostrar também as manutenções programadas, para acompanhamento.
 3. Painel de controle de documentos, de um setor específico.
 4. Login do motorista (matrícula + PIN) e limpeza das vistorias de teste, antes de usar dados reais.
